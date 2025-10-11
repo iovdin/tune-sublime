@@ -1,0 +1,14 @@
+{
+  "name": "tune",
+  "details": "Chat with AI in text file",
+  "author": "Ilya Ovdin",
+  "issues": "https://github.com/iovdin/tune-sublime",
+  "readme": "README.md",
+  "releases": [
+    {
+      "version": "1.0.0",
+      "date": "2025-10-10",
+      "notes": "Initial release with Chat syntax and Mariana-based color scheme."
+    }
+  ]
+}

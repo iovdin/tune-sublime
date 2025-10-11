@@ -1,0 +1,32 @@
+{
+  "name": "Chat - Mariana",
+  "author": "Ilya Ovdin",
+  "semanticClass": "color-scheme.chat.mariana",
+  "extends": "Packages/Color Scheme - Default/Mariana.sublime-color-scheme",
+  "variables": {
+    "roleUser": "#82AAFF",
+    "roleAssistant": "#C792EA",
+    "roleSystem": "#89DDFF",
+    "roleToolResult": "#FFCB6B",
+    "roleToolCall": "#F78C6C",
+    "variable": "#C3E88D",
+    "escape": "#F07178",
+    "errorFg": "#FFFFFF",
+    "errorBg": "#FF5370",
+    "comment": "color(var(background) blend(var(foreground) 60%))"
+  },
+  "rules": [
+    { "name": "Chat: user role", "scope": "keyword.declaration.chat", "foreground": "var(roleUser)", "font_style": "bold" },
+    { "name": "Chat: assistant role", "scope": "keyword.namespace.chat", "foreground": "var(roleAssistant)", "font_style": "bold" },
+    { "name": "Chat: system role", "scope": "keyword.constant.chat", "foreground": "var(roleSystem)", "font_style": "bold" },
+    { "name": "Chat: tool result role", "scope": "keyword.pseudo.chat", "foreground": "var(roleToolResult)", "font_style": "bold" },
+    { "name": "Chat: tool call role", "scope": "keyword.reserved.chat", "foreground": "var(roleToolCall)", "font_style": "bold" },
+
+    { "name": "Chat: variables", "scope": "variable.other.chat", "foreground": "var(variable)", "font_style": "italic" },
+    { "name": "Chat: escapes", "scope": "constant.character.escape.chat", "foreground": "var(escape)" },
+
+    { "name": "Chat: comments", "scope": "comment.line.chat", "foreground": "var(comment)" },
+
+    { "name": "Chat: invalid/error", "scope": "invalid.illegal.chat", "foreground": "var(errorFg)", "background": "var(errorBg)" }
+  ]
+}

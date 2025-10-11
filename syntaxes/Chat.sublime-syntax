@@ -1,0 +1,111 @@
+%YAML 1.2
+---
+name: Chat
+scope: text.chat
+version: 2
+file_extensions:
+  - [chat, prompt]
+
+first_line_match: '^(?:s(?:ystem)?|u(?:ser)?|a(?:ssistant)?|tc|tool_call|tr|tool_result|c(?:omment)?|err(?:or)?)'
+
+variables:
+  role_prefixes: '(?:s(?:ystem)?|u(?:ser)?|a(?:ssistant)?|tc|tool_call|tr|tool_result|c(?:omment)?|err(?:or)?)'
+
+contexts:
+  main:
+    # Comment block: consume the label and enter comment context
+    - match: '^(c(?:omment)?):'
+      captures:
+        1: keyword.constant.chat
+      push: comment
+
+    # system: (expandable)
+    - match: '^(s(?:ystem)?):'
+      captures:
+        1: keyword.constant.chat
+      push: message-expandable
+
+    # user: (expandable)
+    - match: '^(u(?:ser)?):'
+      captures:
+        1: keyword.declaration.chat
+      push: message-expandable
+
+    # tr: or tool_result: (expandable)
+    - match: '^(?:tr|tool_result):'
+      scope: keyword.pseudo.chat
+      push: message-expandable
+
+    # a: or assistant: (plain)
+    - match: '^(a(?:ssistant)?):'
+      captures:
+        1: keyword.namespace.chat
+      push: message-plain
+
+    # tc: or tool_call: (plain)
+    - match: '^(?:tc|tool_call):'
+      scope: keyword.reserved.chat
+      push: message-plain
+
+    # err: or error: (plain, mark as invalid)
+    - match: '^(err(?:or)?):'
+      captures:
+        1: invalid.illegal.chat
+      push: message-plain
+
+    # Handle the Rouge edge-case: bare leading colon treated like pseudo + expandable
+    - match: '^:'
+      scope: keyword.pseudo.chat
+      push: message-expandable
+
+    # Fallback plain text
+    - match: '.+'
+      scope: text.plain
+
+  # Content with variable expansion support
+  message-expandable:
+    # New role starts a new block
+    - match: '^(?={{role_prefixes}}:)'
+      set: main
+
+    # Escaped @
+    - match: '\\@'
+      scope: constant.character.escape.chat
+
+    # @var or @@var; @{...} or @@{...}
+    - match: '@@(?:\{[^}]+\}|\S+)|@(?:\{[^}]+\}|\S+)'
+      scope: variable.function
+
+    # Plain text chunks that don't include '@' (so we don't swallow following variables)
+    - match: "[^@\\\n]+"
+      scope: text.plain
+
+    # Fallback single character (including stray '@')
+    - match: '.'
+      scope: text.plain
+
+  # Content without expansion support
+  message-plain:
+    - match: '^(?={{role_prefixes}}:)'
+      set: main
+    - match: '.+'
+      scope: text.plain
+
+  # Comment context: label is highlighted, body is comment; supports expansions and escapes
+  # and exits when a new role starts.
+  comment:
+    - match: '^(?={{role_prefixes}}:)'
+      set: main
+
+    - match: '^(c(?:omment)?):'
+      captures:
+        1: keyword.constant.chat
+
+    - match: '\\@'
+      scope: constant.character.escape.chat
+
+    - match: '@@(?:\{[^}]+\}|\S+)|@(?:\{[^}]+\}|\S+)'
+      scope: string.other.chat
+
+    - match: '.+'
+      scope: comment.line.chat

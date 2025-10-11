@@ -1,0 +1,15 @@
+[
+  // Windows/Linux
+  { "keys": ["shift+enter"], "command": "tune_chat", "args": {"stop": "step"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["ctrl+enter"], "command": "tune_chat", "args": {"stop": "assistant"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["escape"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["ctrl+c"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]}
+]

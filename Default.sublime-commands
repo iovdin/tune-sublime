@@ -1,0 +1,7 @@
+[
+  {"caption": "Tune: New", "command": "tune_new"},
+  {"caption": "Tune: Chat (Step)", "command": "tune_chat", "args": {"stop": "step"}},
+  {"caption": "Tune: Chat (Until assistant)", "command": "tune_chat", "args": {"stop": "assistant"}},
+  {"caption": "Tune: Kill", "command": "tune_kill"},
+  {"caption": "Tune: Save Name", "command": "tune_save"}
+]
