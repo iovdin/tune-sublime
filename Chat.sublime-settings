@@ -2,4 +2,12 @@
   // Syntax-specific settings for Chat files
   // These apply when View > Syntax is set to Chat
   // "color_scheme": "Packages/tune/color-schemes/Chat (Mariana).sublime-color-scheme"
+
+  // Trigger autocomplete after typing '@' when using the Chat syntax
+  /*
+  "auto_complete_triggers": [
+    { "characters": "@", "selector": "text.chat" },
+    { "characters": "@", "selector": "text.prompt" }
+  ]
+  */
 }
