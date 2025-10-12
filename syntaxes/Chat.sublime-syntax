@@ -4,9 +4,9 @@ name: Chat
 scope: text.chat
 version: 2
 file_extensions:
-  - [chat, prompt]
+  - chat
 
-first_line_match: '^(?:s(?:ystem)?|u(?:ser)?|a(?:ssistant)?|tc|tool_call|tr|tool_result|c(?:omment)?|err(?:or)?)'
+first_line_match: '^(s|system|u|user|a|assistant|tc|tool_call|tr|tool_result|c|comment|err|error)\s*:'
 
 variables:
   role_prefixes: '(?:s(?:ystem)?|u(?:ser)?|a(?:ssistant)?|tc|tool_call|tr|tool_result|c(?:omment)?|err(?:or)?)'
@@ -68,12 +68,8 @@ contexts:
     - match: '^(?={{role_prefixes}}:)'
       set: main
 
-    # Escaped @
-    - match: '\\@'
-      scope: constant.character.escape.chat
-
     # @var or @@var; @{...} or @@{...}
-    - match: '@@(?:\{[^}]+\}|\S+)|@(?:\{[^}]+\}|\S+)'
+    - match: '(?<![\\@])@(?:\{[^}]+\}|\S+)'
       scope: variable.function
 
     # Plain text chunks that don't include '@' (so we don't swallow following variables)
@@ -101,11 +97,9 @@ contexts:
       captures:
         1: keyword.constant.chat
 
-    - match: '\\@'
-      scope: constant.character.escape.chat
-
-    - match: '@@(?:\{[^}]+\}|\S+)|@(?:\{[^}]+\}|\S+)'
-      scope: string.other.chat
+    # @var or @@var; @{...} or @@{...}
+    - match: '(?<!\\)@{1,2}(?:\{[^}]+\}|\S+)'
+      scope: variable.function
 
     - match: '.+'
       scope: comment.line.chat
