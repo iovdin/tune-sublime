@@ -366,7 +366,8 @@ class TuneCompletions(sublime_plugin.EventListener):
         row, col = view.rowcol(locations[0])
         line_region = view.line(locations[0])
         line_text = view.substr(line_region)
-        before_cursor = line_text[: col - line_region.begin()]
+        # Use buffer point offset within the line, not the visual column value
+        before_cursor = line_text[: locations[0] - line_region.begin()]
 
         # Snippet-like completions when entire line is just 'u'/'s'/'c'
         if before_cursor in ("u", "s", "c") and (locations[0] - line_region.begin()) == 1:
@@ -402,9 +403,25 @@ class TuneCompletions(sublime_plugin.EventListener):
                     return
                 items = []
                 if isinstance(result, list):
-                    for item in result:
+                    seen = set()
+                    deduped = []
+                    for raw in result:
+                        # Determine label (name) for de-duplication
+                        label = raw.get("name") if isinstance(raw, dict) else str(raw)
+                        if not label or label in seen:
+                            continue
+                        seen.add(label)
+                        deduped.append(raw)
+                    for item in deduped:
                         label = item.get("name") if isinstance(item, dict) else str(item)
-                        menu = "[{}]".format(item.get("source")) if isinstance(item, dict) and item.get("source") else ""
+                        typ = item.get("type") if isinstance(item, dict) else None
+                        src = item.get("source") if isinstance(item, dict) else None
+                        ann_parts = []
+                        if typ:
+                            ann_parts.append(str(typ))
+                        if src:
+                            ann_parts.append("[{}]".format(src))
+                        menu = " ".join(ann_parts)
                         items.append(sublime.CompletionItem.command_completion(
                             trigger=label,
                             annotation=menu,
@@ -417,6 +434,38 @@ class TuneCompletions(sublime_plugin.EventListener):
 
         threading.Thread(target=fill, daemon=True).start()
         return clist
+
+    def on_modified_async(self, view: sublime.View):
+        try:
+            # Only trigger in Chat syntax
+            sel = view.sel()
+            if len(sel) != 1:
+                return
+            caret = sel[0].end()
+            if caret == 0:
+                return
+            # Require the file to be Chat
+            if not view.match_selector(caret, "text.chat"):
+                return
+            # If AC already showing, don't interfere
+            if view.is_auto_complete_visible():
+                return
+            # Check the just-typed character and that it's the first char on the line
+            ch = view.substr(sublime.Region(caret - 1, caret))
+            if ch not in ("u", "s"):
+                return
+            line_region = view.line(caret)
+            # Ensure cursor is at column 1 (i.e., we just typed the first character)
+            if caret - line_region.begin() != 1:
+                return
+            # Trigger autocomplete popup for our snippet completions
+            view.run_command("auto_complete", {
+                "disable_auto_insert": True,
+                "api_completions_only": True,
+                "next_completion_if_showing": False,
+            })
+        except Exception:
+            pass
 
 
 # Selection commands analogous to textobjects in nvim
