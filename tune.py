@@ -380,7 +380,7 @@ class TuneChatCommand(sublime_plugin.TextCommand):
 class TuneCompletions(sublime_plugin.EventListener):
     def on_query_completions(self, view: sublime.View, prefix: str, locations: List[int]):
         # Only in Chat files
-        if view.match_selector(locations[0], "text.chat") is False:
+        if view.match_selector(locations[0], "text.chat") is False and view.match_selector(locations[0], "text.prompt") is False:
             return None
 
         row, col = view.rowcol(locations[0])
@@ -594,6 +594,57 @@ class TuneSelectTailCommand(sublime_plugin.TextCommand):
         if inner:
             start_line = start_line + 1
         return start_line, end_line
+
+
+class TuneAutoSaveCommand(sublime_plugin.TextCommand):
+    """Command that intercepts save and suggests filename if needed."""
+    def run(self, edit):
+        # If view already has a filename, just save normally
+        if self.view.file_name():
+            self.view.run_command("save")
+            return
+        
+        # Otherwise, get a suggested filename
+        client, err = spawn_tune(
+            exports={
+                "resolve": _ctx_resolve,
+                "read": _ctx_read,
+            },
+            cwd=_get_project_folder()
+        )
+        if err or not client:
+            # Fall back to normal save dialog
+            self.view.window().run_command("save_as")
+            return
+
+        def cb(e, result):
+            if e:
+                client.stop()
+                # Fall back to normal save dialog
+                sublime.set_timeout(lambda: self.view.window().run_command("save_as"), 0)
+                return
+            
+            filename = (result or {}).get("filename") if isinstance(result, dict) else None
+            client.stop()
+            
+            if not filename:
+                # No suggestion available, use normal save dialog
+                sublime.set_timeout(lambda: self.view.window().run_command("save_as"), 0)
+                return
+            
+            # Set the suggested name temporarily so it appears in the save dialog
+            project_folder = _get_project_folder()
+            if project_folder:
+                suggested_path = os.path.join(project_folder, filename)
+            else:
+                suggested_path = filename
+            
+            # Set the name and open save dialog
+            self.view.set_name(filename)
+            sublime.set_timeout(lambda: self.view.window().run_command("save_as"), 0)
+
+        params = {"filename": "editor-filename.chat", "stop": "assistant", "response": "json"}
+        client.file2run(params, False, cb)
 
 
 class TuneCleanupListener(sublime_plugin.EventListener):

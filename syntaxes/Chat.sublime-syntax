@@ -6,8 +6,6 @@ version: 2
 file_extensions:
   - chat
 
-first_line_match: '^(s|system|u|user|a|assistant|tc|tool_call|tr|tool_result|c|comment|err|error)\s*:'
-
 variables:
   role_prefixes: '(?:s(?:ystem)?|u(?:ser)?|a(?:ssistant)?|tc|tool_call|tr|tool_result|c(?:omment)?|err(?:or)?)'
 

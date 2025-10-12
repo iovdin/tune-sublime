@@ -1,0 +1,60 @@
+import os
+import sublime
+import sublime_plugin
+
+
+def _is_plain_text(view: sublime.View) -> bool:
+    try:
+        syn = view.syntax()
+        if syn is None:
+            return False
+        # Prefer checking scope to avoid locale/name issues
+        if getattr(syn, 'scope', '') == 'text.plain':
+            return True
+        # Fallback: check path in case scope changes in future builds
+        path = getattr(syn, 'path', '') or ''
+        return 'Text/Plain text' in path or path.endswith('Plain text.sublime-syntax') or path.endswith('Plain text.tmLanguage')
+    except Exception:
+        return False
+
+
+def _first_line(view: sublime.View) -> str:
+    if view.size() == 0:
+        return ''
+    region = view.line(0)
+    return view.substr(region)
+
+
+def _should_assign_chat(view: sublime.View) -> bool:
+    if not _is_plain_text(view):
+        return False
+    line0 = _first_line(view)
+    return line0.startswith('user:') or line0.startswith('system:')
+
+
+def _assign_chat_syntax(view: sublime.View) -> None:
+    pkg_name = os.path.basename(os.path.dirname(__file__))
+    resource = 'Packages/{}/syntaxes/Chat.sublime-syntax'.format(pkg_name)
+    # Assign syntax; assign_syntax exists in ST 4+, set_syntax_file for backward compat
+    assign = getattr(view, 'assign_syntax', None)
+    if callable(assign):
+        assign(resource)
+    else:
+        view.set_syntax_file(resource)
+
+
+class ChatAutoSyntaxListener(sublime_plugin.EventListener):
+    def on_load_async(self, view: sublime.View) -> None:
+        try:
+            if _should_assign_chat(view):
+                _assign_chat_syntax(view)
+        except Exception:
+            pass
+
+    def on_modified_async(self, view: sublime.View) -> None:
+        # Handle new unsaved/plain text buffers where the first line is typed after creation
+        try:
+            if _should_assign_chat(view):
+                _assign_chat_syntax(view)
+        except Exception:
+            pass
