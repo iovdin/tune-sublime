@@ -21,10 +21,13 @@ def plugin_loaded():
     global _shared_client
     with _shared_lock:
         if _shared_client is None:
-            client, err = spawn_tune(exports={
-                "resolve": _ctx_resolve,
-                "read": _ctx_read,
-            })
+            client, err = spawn_tune(
+                exports={
+                    "resolve": _ctx_resolve,
+                    "read": _ctx_read,
+                },
+                cwd=_get_project_folder()
+            )
             if err:
                 print("tune: failed to start shared rpc:", err)
             else:
@@ -54,6 +57,17 @@ def _get_active_view() -> Optional[sublime.View]:
     if not win:
         return None
     return win.active_view()
+
+
+def _get_project_folder() -> Optional[str]:
+    """Get the first open folder from the active window, or None."""
+    win = sublime.active_window()
+    if not win:
+        return None
+    folders = win.folders()
+    if folders and len(folders) > 0:
+        return folders[0]
+    return None
 
 
 def _ctx_resolve(params):
@@ -229,10 +243,13 @@ class TuneSaveCommand(sublime_plugin.TextCommand):
             sublime.status_message(f"Buffer already has a name: {self.view.file_name()}")
             return
 
-        client, err = spawn_tune(exports={
-            "resolve": _ctx_resolve,
-            "read": _ctx_read,
-        })
+        client, err = spawn_tune(
+            exports={
+                "resolve": _ctx_resolve,
+                "read": _ctx_read,
+            },
+            cwd=_get_project_folder()
+        )
         if err or not client:
             sublime.error_message(f"Tune: error starting RPC: {err}")
             return
@@ -305,10 +322,13 @@ class TuneChatCommand(sublime_plugin.TextCommand):
         begin_region = sublime.Region(self.view.text_point(s_start, 0), self.view.text_point(s_mid, 0))
         begin_text = self.view.substr(begin_region)
 
-        client, err = spawn_tune(exports={
-            "resolve": _ctx_resolve,
-            "read": _ctx_read,
-        })
+        client, err = spawn_tune(
+            exports={
+                "resolve": _ctx_resolve,
+                "read": _ctx_read,
+            },
+            cwd=_get_project_folder()
+        )
         if err or not client:
             render_output("err: \n" + f"tune: failed to start rpc: {err}")
             return

@@ -9,9 +9,10 @@ from typing import Any, Callable, Dict, Optional
 # Lightweight JSON-RPC 2.0 client over stdio with newline-delimited JSON
 
 class JsonRpcClient:
-    def __init__(self, cmd, exports: Optional[Dict[str, Callable]] = None):
+    def __init__(self, cmd, exports: Optional[Dict[str, Callable]] = None, cwd: Optional[str] = None):
         self.cmd = cmd
         self.exports = exports or {}
+        self.cwd = cwd
         self.process: Optional[subprocess.Popen] = None
         self._reader_thread: Optional[threading.Thread] = None
         self._stderr_thread: Optional[threading.Thread] = None
@@ -35,6 +36,7 @@ class JsonRpcClient:
                 stderr=subprocess.PIPE,
                 bufsize=1,
                 universal_newlines=True,
+                cwd=self.cwd,
             )
         except Exception as e:
             return str(e)
@@ -171,12 +173,12 @@ class JsonRpcClient:
             self._errbuf.append(line.rstrip())
 
 
-def spawn_tune(exports: Optional[Dict[str, Callable]] = None):
+def spawn_tune(exports: Optional[Dict[str, Callable]] = None, cwd: Optional[str] = None):
     env_path = os.environ.get("TUNE_PATH", "")
     cmd = ["/Users/iovdin/.nvm/versions/node/v22.20.0/bin/tune-sdk", "rpc"]
     if env_path:
         cmd += ["--path", env_path]
-    client = JsonRpcClient(cmd, exports=exports)
+    client = JsonRpcClient(cmd, exports=exports, cwd=cwd)
     err = client.start()
     if err:
         return None, err
