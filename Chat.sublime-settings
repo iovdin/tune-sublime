@@ -10,4 +10,12 @@
     { "characters": "@", "selector": "text.prompt" }
   ]
   */
+
+  // Path to the tune-sdk executable
+  // If not set, will search in PATH
+  // Examples:
+  //   "tune-sdk-path": "tune-sdk"  (uses PATH)
+  //   "tune-sdk-path": "/usr/local/bin/tune-sdk"  (absolute path)
+  //   "tune-sdk-path": "~/.nvm/versions/node/v22.20.0/bin/tune-sdk"  (home relative)
+  // "tune-sdk-path": "tune-sdk"
 }

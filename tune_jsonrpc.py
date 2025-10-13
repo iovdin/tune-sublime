@@ -1,6 +1,7 @@
 import json
 import os
 import queue
+import shutil
 import subprocess
 import threading
 import time
@@ -173,15 +174,75 @@ class JsonRpcClient:
             self._errbuf.append(line.rstrip())
 
 
+def _get_tune_sdk_path():
+    """
+    Get the tune-sdk executable path.
+    Priority:
+    1. Setting from Chat.sublime-settings
+    2. Check if 'tune-sdk' exists in PATH
+    3. Return 'tune-sdk' as fallback
+    """
+    # try:
+    import sublime
+
+    # First check user preferences
+    user_settings = sublime.load_settings("Preferences.sublime-settings")
+    sdk_path = user_settings.get("tune-sdk-path")
+
+    # If not found, check package settings
+    if not sdk_path:
+        package_settings = sublime.load_settings("Chat.sublime-settings")
+        sdk_path = package_settings.get("tune-sdk-path")
+    print("sdk_path", sdk_path)
+    
+    if sdk_path:
+        # Expand ~ to home directory
+        sdk_path = os.path.expanduser(sdk_path)
+        # If it's a relative or absolute path that exists, use it
+        if os.path.isabs(sdk_path) and os.path.isfile(sdk_path):
+            return sdk_path
+        # If it's just a command name, check if it's in PATH
+        if shutil.which(sdk_path):
+            return sdk_path
+        # If the setting exists but is not found, still try to use it
+        # (it might be available at runtime)
+        return sdk_path
+    # except Exception:
+    #     
+    #     pass
+    
+    # Fallback: check if tune-sdk is in PATH
+    which_result = shutil.which("tune-sdk")
+    if which_result:
+        return which_result
+    
+    # Final fallback
+    return "tune-sdk"
+
+
 def spawn_tune(exports: Optional[Dict[str, Callable]] = None, cwd: Optional[str] = None):
     env_path = os.environ.get("TUNE_PATH", "")
-    cmd = ["/Users/iovdin/.nvm/versions/node/v22.20.0/bin/tune-sdk", "rpc"]
+    tune_sdk = _get_tune_sdk_path()
+    cmd = [tune_sdk, "rpc"]
     if env_path:
         cmd += ["--path", env_path]
     client = JsonRpcClient(cmd, exports=exports, cwd=cwd)
     err = client.start()
     if err:
-        return None, err
+        # Provide helpful error message
+        error_msg = f"Failed to start tune-sdk: {err}\n\n"
+        error_msg += "Setup instructions:\n\n"
+        error_msg += "1. Install tune-sdk:\n"
+        error_msg += "   npm install -g tune-sdk\n\n"
+        error_msg += "2. Initialize configuration:\n"
+        error_msg += "   tune-sdk init\n\n"
+        error_msg += "3. Configure API keys in ~/.tune/.env:\n"
+        error_msg += "   OPENAI_KEY=your_key_here\n\n"
+        error_msg += "4. If tune-sdk is installed but not found:\n"
+        error_msg += "   - Find its location: which tune-sdk\n"
+        error_msg += "   - Add to Preferences.sublime-settings:\n"
+        error_msg += '     "tune-sdk-path": "/path/to/tune-sdk"\n'
+        return None, error_msg
     # advertise exports
     try:
         client.init(["resolve", "read"], False, lambda _e, _r: None)
