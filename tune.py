@@ -639,9 +639,20 @@ class TuneAutoSaveCommand(sublime_plugin.TextCommand):
             else:
                 suggested_path = filename
             
-            # Set the name and open save dialog
+            # Set the name and open save dialog with suggested path
             self.view.set_name(filename)
-            sublime.set_timeout(lambda: self.view.window().run_command("save_as"), 0)
+            win = self.view.window()
+            if win is None:
+                return
+
+            def open_dialog():
+                try:
+                    # Prefer prompt_save_as with a prefilled path if available
+                    win.run_command("prompt_save_as", {"file": suggested_path})
+                except Exception:
+                    # Fallback
+                    win.run_command("save_as")
+            sublime.set_timeout(open_dialog, 0)
 
         params = {"filename": "editor-filename.chat", "stop": "assistant", "response": "json"}
         client.file2run(params, False, cb)

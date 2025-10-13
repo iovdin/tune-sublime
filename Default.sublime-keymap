@@ -11,5 +11,9 @@
   ]},
   { "keys": ["ctrl+c"], "command": "tune_kill", "context": [
     {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  // Intercept Ctrl+S to suggest a name then open Save As in chat/prompt buffers
+  { "keys": ["ctrl+s"], "command": "tune_auto_save", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat | text.prompt"}
   ]}
 ]
