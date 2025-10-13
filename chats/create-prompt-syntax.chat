@@ -1,0 +1,127 @@
+system: @@system
+user:
+i have a syntax file for .chat
+i want to create new syntax file for .prompt file 
+it is like .chat file but simplier it only highlights \@ \@\@ and \@{ ... }, there are no roles
+assistant:
+
+tool_call: rf {"filename":"syntaxes/Chat.sublime-syntax","linenum":true}
+tool_result:
+@{ syntaxes/Chat.sublime-syntax | linenum }
+assistant:
+
+tool_call: rf {"filename":"package.json","linenum":true}
+tool_result:
+@{ package.json | linenum }
+assistant:
+
+tool_call: rf {"filename":"color-schemes/Chat (Mariana).sublime-color-scheme","linenum":true}
+tool_result:
+@{ color-schemes/Chat (Mariana).sublime-color-scheme | linenum }
+
+assistant:
+
+tool_call: wf {"filename":"syntaxes/Prompt.sublime-syntax"}
+%YAML 1.2
+---
+name: Prompt
+scope: text.prompt
+version: 2
+file_extensions:
+  - prompt
+
+contexts:
+  main:
+    # Escaped at-sign
+    - match: '\\@'
+      scope: constant.character.escape.chat
+
+    # Double at-sign
+    - match: '@@'
+      scope: constant.character.escape.chat
+
+    # Braced variable expansion: @{ ... }
+    - match: '@\{[^}]+\}'
+      scope: variable.other.chat
+
+    # Plain text chunks without '@'
+    - match: "[^@\\\n]+"
+      scope: text.plain
+
+    # Fallback single character (including stray '@')
+    - match: '.'
+      scope: text.plain
+
+tool_result:
+written
+assistant:
+
+tool_call: rf {"filename":"Chat.sublime-settings","linenum":true}
+tool_result:
+@{ Chat.sublime-settings | linenum }
+assistant:
+
+tool_call: patch {"filename":"syntaxes/Prompt.sublime-syntax"}
+<<<<<<< ORIGINAL
+%YAML 1.2
+---
+name: Prompt
+scope: text.prompt
+version: 2
+file_extensions:
+  - prompt
+
+contexts:
+  main:
+    # Escaped at-sign
+    - match: '\\@'
+      scope: constant.character.escape.chat
+
+    # Double at-sign
+    - match: '@@'
+      scope: constant.character.escape.chat
+
+    # Braced variable expansion: @{ ... }
+    - match: '@\{[^}]+\}'
+      scope: variable.other.chat
+
+    # Plain text chunks without '@'
+    - match: "[^@\\\n]+"
+      scope: text.plain
+
+    # Fallback single character (including stray '@')
+    - match: '.'
+      scope: text.plain
+=======
+%YAML 1.2
+---
+name: Prompt
+scope: text.prompt
+version: 2
+file_extensions:
+  - prompt
+
+contexts:
+  main:
+    # Braced variable expansion: @{ ... }
+    - match: '@\{[^}]+\}'
+      scope: variable.other.chat
+
+    # Double at-sign
+    - match: '@@'
+      scope: constant.character.escape.chat
+
+    # Single at-sign
+    - match: '@'
+      scope: variable.other.chat
+
+    # Plain text chunks without '@'
+    - match: "[^@\n]+"
+      scope: text.plain
+
+    # Fallback single character
+    - match: '.'
+      scope: text.plain
+>>>>>>> UPDATED
+tool_result:
+patched

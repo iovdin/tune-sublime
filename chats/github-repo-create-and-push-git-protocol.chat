@@ -1,0 +1,44 @@
+user: 
+@sh 
+i want you to create tune-sublime repository with gh cli use git:// protocol
+and publish current repo there
+assistant:
+
+tool_call: sh
+gh repo create tune-sublime --public --confirm
+tool_result:
+https://github.com/iovdin/tune-sublime
+...
+assistant:
+
+tool_call: sh
+git remote set-url origin git://github.com/iovdin/tune-sublime.git
+tool_result:
+No such remote 'origin'
+...
+assistant:
+
+tool_call: sh
+git remote add origin git://github.com/iovdin/tune-sublime.git
+tool_result:
+...
+assistant:
+
+tool_call: sh
+git push -u origin main
+tool_result:
+ error: src refspec main does not match any
+ error: failed to push some refs to 'git://github.com/iovdin/tune-sublime.git'
+...
+assistant:
+It seems the current branch is not named "main." Let me check the branch name and push it accordingly.
+tool_call: sh
+git branch --show-current
+tool_result:
+master
+...
+assistant:
+
+tool_call: sh
+git push -u origin master
+...

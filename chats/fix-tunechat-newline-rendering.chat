@@ -1,0 +1,60 @@
+system: @@system
+user:
+when i call TuneChat command
+it renders "..." not on new line but appends to user message
+e.g.
+ user: 
+ hi how are you|(cursor here initiate chat)
+then it shows
+ user:
+ hi how are you...assistant:
+ assistant:
+ Hello! I'm doing great, thank you. How can I assist you today?
+
+but ... should be on the next line
+assistant:
+
+tool_call: rf {"filename":"tune.py","linenum":true}
+tool_result:
+@{ tune.py | linenum }
+assistant:
+
+tool_call: patch {"filename":"tune.py"}
+<<<<<<< ORIGINAL
+        def render_output(completion: str):
+            self.view.erase_regions(_highlight_key)
+            new_text = completion
+            s_end_new = _replace_lines(self.view, state["s_mid"], state["s_end"], new_text)
+            state["s_end"] = s_end_new
+            _highlight_rows(self.view, state["s_mid"], state["s_end"])
+            # move caret to end
+            end_pt = self.view.text_point(state["s_end"], 0)
+            self.view.sel().clear()
+            self.view.sel().add(sublime.Region(end_pt))
+            self.view.show(end_pt)
+=======
+        def render_output(completion: str):
+            self.view.erase_regions(_highlight_key)
+            new_text = completion
+            # If inserting at a position that is not preceded by a newline,
+            # make sure we start on a new line so we don't append to the
+            # user's last line.
+            try:
+                start_pt = self.view.text_point(state["s_mid"], 0)
+                if start_pt > 0:
+                    prev = self.view.substr(sublime.Region(start_pt - 1, start_pt))
+                    if prev != "\n":
+                        new_text = "\n" + new_text
+            except Exception:
+                pass
+            s_end_new = _replace_lines(self.view, state["s_mid"], state["s_end"], new_text)
+            state["s_end"] = s_end_new
+            _highlight_rows(self.view, state["s_mid"], state["s_end"])
+            # move caret to end
+            end_pt = self.view.text_point(state["s_end"], 0)
+            self.view.sel().clear()
+            self.view.sel().add(sublime.Region(end_pt))
+            self.view.show(end_pt)
+>>>>>>> UPDATED
+tool_result:
+patched

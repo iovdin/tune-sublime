@@ -1,0 +1,29 @@
+system: @@system
+user:
+right now hot keys are for windows, can you make also one for osx changin ctrl => cmd
+assistant:
+
+tool_call: rf {"filename":"Default.sublime-keymap","linenum":true}
+tool_result:
+@{ Default.sublime-keymap | linenum }
+assistant:
+
+tool_call: wf {"filename":"Default (OSX).sublime-keymap"}
+[
+  // macOS
+  { "keys": ["shift+enter"], "command": "tune_chat", "args": {"stop": "step"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["super+enter"], "command": "tune_chat", "args": {"stop": "assistant"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["escape"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["super+c"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]}
+]
+
+tool_result:
+written

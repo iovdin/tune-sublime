@@ -1,0 +1,1535 @@
+system: @@system
+user:
+look there is a nvim plugin developed already
+read lua files in this directory /Users/iovdin/projects/tune.nvim/lua/tune
+
+analyze and make plugin with the same functionality as there, but take into account that it is different language, and that in python in might be made differently
+assistant:
+I don’t have access to your local filesystem, so I can’t read /Users/iovdin/projects/tune.nvim/lua/tune. Please either:
+
+- Share a link to the repo (GitHub/GitLab), or
+- Paste the Lua files here, or
+- Zip that folder and provide its contents.
+
+Once I can see the Lua code, I’ll:
+- Analyze the features, commands, and config.
+- Map Neovim concepts to Sublime Text APIs (TextCommand/WindowCommand, EventListener, settings, keymaps, quick panels, etc.).
+- Implement an equivalent Sublime Text plugin in Python and add the necessary files to this package.
+
+If you want me to start now with a scaffolding that we’ll fill in after I see the Lua, I can create:
+- A Python plugin module (commands and event listeners)
+- A .sublime-settings file mirroring the plugin’s config
+- Default keymaps and command palette entries
+- Any needed UI (quick_panel/input_panel/status messages)
+
+Tell me which you prefer, and please provide the Lua source or repo URL.
+user:
+you have access to local file system with sh tool and rf tools
+assistant:
+
+tool_call: sh
+ls -la /Users/iovdin/projects/tune.nvim/lua/tune
+tool_result:
+total 104
+drwxr-xr-x  10 iovdin  staff   320 Oct  6 16:34 .
+drwxr-xr-x   3 iovdin  staff    96 Dec  7  2024 ..
+drwxr-xr-x   8 iovdin  staff   256 Apr 22 16:38 .cache
+-rw-r--r--   1 iovdin  staff  1940 Apr 22 16:38 .env
+-rw-r--r--   1 iovdin  staff  2260 Aug  4 21:27 context.lua
+-rw-r--r--   1 iovdin  staff  9651 Oct  6 16:34 init.lua
+-rw-r--r--   1 iovdin  staff  7460 Oct  6 16:16 jsonrpc.lua
+-rw-r--r--   1 iovdin  staff  1835 Aug  6 18:55 source.lua
+-rw-r--r--   1 iovdin  staff  5454 Aug  6 10:16 textobjects.lua
+-rw-r--r--   1 iovdin  staff  9693 Aug  8 10:33 tune_help.md
+
+assistant:
+
+tool_call: rf {"filename":"/Users/iovdin/projects/tune.nvim/lua/tune/init.lua","linenum":true}
+tool_result:
+@{ ../tune.nvim/lua/tune/init.lua | linenum }
+assistant:
+
+tool_call: rf {"filename":"/Users/iovdin/projects/tune.nvim/lua/tune/jsonrpc.lua","linenum":true}
+tool_result:
+@{ ../tune.nvim/lua/tune/jsonrpc.lua | linenum }
+assistant:
+
+tool_call: rf {"filename":"/Users/iovdin/projects/tune.nvim/lua/tune/context.lua","linenum":true}
+tool_result:
+@{ ../tune.nvim/lua/tune/context.lua | linenum }
+assistant:
+
+tool_call: rf {"filename":"/Users/iovdin/projects/tune.nvim/lua/tune/source.lua","linenum":true}
+tool_result:
+@{ ../tune.nvim/lua/tune/source.lua | linenum }
+assistant:
+
+tool_call: rf {"filename":"/Users/iovdin/projects/tune.nvim/lua/tune/textobjects.lua","linenum":true}
+tool_result:
+@{ ../tune.nvim/lua/tune/textobjects.lua | linenum }
+assistant:
+
+tool_call rf {"filename":"/Users/iovdin/projects/tune.nvim/lua/tune/tune_help.md","linenum":true}
+user:
+enough reading
+assistant:
+
+tool_call: wf {"filename":"tune_jsonrpc.py"}
+import json
+import os
+import queue
+import subprocess
+import threading
+import time
+from typing import Any, Callable, Dict, Optional
+
+# Lightweight JSON-RPC 2.0 client over stdio with newline-delimited JSON
+
+class JsonRpcClient:
+    def __init__(self, cmd, exports: Optional[Dict[str, Callable]] = None):
+        self.cmd = cmd
+        self.exports = exports or {}
+        self.process: Optional[subprocess.Popen] = None
+        self._reader_thread: Optional[threading.Thread] = None
+        self._stderr_thread: Optional[threading.Thread] = None
+        self._write_lock = threading.Lock()
+        self._id = 1
+        self._callbacks: Dict[int, Callable] = {}
+        self._iters: Dict[int, Callable] = {}
+        self._closing = False
+        self._errbuf = []
+
+    @property
+    def is_running(self):
+        return self.process is not None and self.process.poll() is None
+
+    def start(self) -> Optional[str]:
+        try:
+            self.process = subprocess.Popen(
+                self.cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                bufsize=1,
+                universal_newlines=True,
+            )
+        except Exception as e:
+            return str(e)
+
+        self._reader_thread = threading.Thread(target=self._read_stdout, name="tune-rpc-stdout", daemon=True)
+        self._reader_thread.start()
+        self._stderr_thread = threading.Thread(target=self._read_stderr, name="tune-rpc-stderr", daemon=True)
+        self._stderr_thread.start()
+        return None
+
+    def stop(self):
+        self._closing = True
+        try:
+            if self.process and self.is_running:
+                self.process.terminate()
+                # Give it a moment, then kill if needed
+                try:
+                    self.process.wait(timeout=0.5)
+                except Exception:
+                    self.process.kill()
+        finally:
+            self.process = None
+
+    # Dynamic RPC method: client.<method>(params, stream=False, callback)
+    def __getattr__(self, name: str):
+        def _call(params: Any = None, stream: bool = False, callback: Optional[Callable] = None):
+            self._call(name, params, stream, callback)
+        return _call
+
+    def _call(self, method: str, params: Any, stream: bool, callback: Optional[Callable]):
+        if not self.is_running:
+            if callback:
+                callback({"message": "process not running"}, None)
+            return
+        msg_id = self._id
+        self._id += 1
+        if callback:
+            if stream:
+                self._iters[msg_id] = callback
+            else:
+                self._callbacks[msg_id] = callback
+        payload = {
+            "jsonrpc": "2.0",
+            "id": msg_id,
+            "method": method,
+            "params": params,
+            "stream": bool(stream),
+        }
+        self._write_json(payload)
+
+    def _write_json(self, payload: Dict[str, Any]):
+        if not self.is_running:
+            return
+        data = json.dumps(payload, ensure_ascii=False)
+        with self._write_lock:
+            try:
+                assert self.process and self.process.stdin
+                self.process.stdin.write(data + "\n")
+                self.process.stdin.flush()
+            except Exception:
+                pass
+
+    def _read_stdout(self):
+        assert self.process and self.process.stdout
+        for line in self.process.stdout:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                msg = json.loads(line)
+            except Exception:
+                continue
+
+            # responses
+            if isinstance(msg, dict) and "id" in msg and ("result" in msg or "error" in msg or "done" in msg):
+                msg_id = msg.get("id")
+                cb = self._callbacks.pop(msg_id, None)
+                it = self._iters.get(msg_id)
+                if cb is not None:
+                    try:
+                        cb(msg.get("error"), msg.get("result"))
+                    except Exception:
+                        pass
+                elif it is not None:
+                    done = bool(msg.get("done"))
+                    try:
+                        it(msg.get("error"), {"value": msg.get("result"), "done": done})
+                    except Exception:
+                        pass
+                    if done:
+                        self._iters.pop(msg_id, None)
+                continue
+
+            # requests from the server
+            if isinstance(msg, dict) and msg.get("method"):
+                method = msg["method"]
+                req_id = msg.get("id")
+                params = msg.get("params")
+                result = None
+                error = None
+                func = self.exports.get(method)
+                if func is None:
+                    error = f"Method not found: {method}"
+                else:
+                    try:
+                        result = func(params)
+                    except Exception as e:
+                        error = f"{e}"
+                if req_id is not None:
+                    if error is not None:
+                        self._write_json({"jsonrpc": "2.0", "id": req_id, "error": {"message": error}})
+                    else:
+                        self._write_json({"jsonrpc": "2.0", "id": req_id, "result": result})
+
+        # process ended: reject callbacks
+        if not self._closing:
+            err_text = "\n".join(self._errbuf)
+            for _, cb in list(self._callbacks.items()):
+                try:
+                    cb({"message": err_text or "process exited"}, None)
+                except Exception:
+                    pass
+            self._callbacks.clear()
+            for _, it in list(self._iters.items()):
+                try:
+                    it({"message": err_text or "process exited"}, {"value": "", "done": True})
+                except Exception:
+                    pass
+            self._iters.clear()
+
+    def _read_stderr(self):
+        assert self.process and self.process.stderr
+        for line in self.process.stderr:
+            self._errbuf.append(line.rstrip())
+
+
+def spawn_tune(exports: Optional[Dict[str, Callable]] = None):
+    env_path = os.environ.get("TUNE_PATH", "")
+    cmd = ["tune-sdk", "rpc"]
+    if env_path:
+        cmd += ["--path", env_path]
+    client = JsonRpcClient(cmd, exports=exports)
+    err = client.start()
+    if err:
+        return None, err
+    # advertise exports
+    try:
+        client.init(["resolve", "read"], False, lambda _e, _r: None)
+    except Exception:
+        pass
+    return client, None
+
+tool_result:
+written
+assistant:
+
+tool_call: wf {"filename":"tune.py"}
+import os
+import threading
+from typing import Dict, Optional, Tuple, List
+
+import sublime
+import sublime_plugin
+
+from .tune_jsonrpc import spawn_tune, JsonRpcClient
+
+# State per view
+_current_clients: Dict[int, JsonRpcClient] = {}
+_highlight_key = "tune_generating_text"
+
+# Shared client for suggestions
+_shared_client: Optional[JsonRpcClient] = None
+_shared_lock = threading.Lock()
+
+
+def plugin_loaded():
+    global _shared_client
+    with _shared_lock:
+        if _shared_client is None:
+            client, err = spawn_tune(exports={
+                "resolve": _ctx_resolve,
+                "read": _ctx_read,
+            })
+            if err:
+                print("tune: failed to start shared rpc:", err)
+            else:
+                _shared_client = client
+
+
+def plugin_unloaded():
+    for v_id, client in list(_current_clients.items()):
+        try:
+            client.stop()
+        except Exception:
+            pass
+        _current_clients.pop(v_id, None)
+    global _shared_client
+    if _shared_client is not None:
+        try:
+            _shared_client.stop()
+        except Exception:
+            pass
+        _shared_client = None
+
+
+# Context exports matching tune.context in nvim
+
+def _get_active_view() -> Optional[sublime.View]:
+    win = sublime.active_window()
+    if not win:
+        return None
+    return win.active_view()
+
+
+def _ctx_resolve(params):
+    name = params.get("name") if isinstance(params, dict) else None
+    tbl = {
+        "editor/filename": {"name": "filename", "fullname": "editor/filename", "type": "text"},
+        "editor/buffer": {"name": "buffer", "fullname": "editor/buffer", "type": "text"},
+        "editor/buffers": {"name": "buffers", "fullname": "editor/buffers", "type": "text"},
+        "editor/selection": {"name": "selection", "fullname": "editor/selection", "type": "text"},
+    }
+    return tbl.get(name, {"error": "not found"})
+
+
+def _ctx_read(params):
+    view = _get_active_view()
+    if view is None:
+        return ""
+    name = params.get("name") if isinstance(params, dict) else None
+    if name == "editor/filename":
+        return view.file_name() or (view.name() or "")
+    if name == "editor/buffer":
+        return view.substr(sublime.Region(0, view.size()))
+    if name == "editor/buffers":
+        lines = []
+        for w in sublime.windows():
+            for v in w.views():
+                fn = v.file_name() or v.name() or "untitled"
+                lines.append(f"{v.id()} {fn}")
+        return "\n".join(lines)
+    if name == "editor/selection":
+        sel = view.sel()
+        if not sel:
+            return ""
+        parts = []
+        for r in sel:
+            parts.append(view.substr(r))
+        return "\n".join(parts)
+    return {"error": "not found"}
+
+
+# Helpers
+
+def _get_line_regions(view: sublime.View, line_index: int) -> sublime.Region:
+    pt = view.text_point(line_index, 0)
+    return view.line(pt)
+
+
+def _get_line_count(view: sublime.View) -> int:
+    # approximate by last row of end point
+    return view.rowcol(view.size())[0] + 1
+
+
+def _compute_split_bounds(view: sublime.View, cursor_row: int) -> Tuple[int, int, int]:
+    # Mimic Lua logic: s_start, s_mid, s_end within the buffer
+    roles = {
+        "c", "comment", "s", "system", "u", "user", "a", "assistant",
+        "tc", "tool_call", "tr", "tool_result", "err", "error"
+    }
+    total_lines = _get_line_count(view)
+    s_start = 0  # 0-based row index
+    s_mid = None
+    s_end = total_lines
+
+    # Walk lines to find boundaries
+    for idx in range(total_lines):
+        line_region = view.full_line(view.text_point(idx, 0))
+        line_text = view.substr(line_region).rstrip("\n")
+        role = None
+        content = None
+        if ":" in line_text:
+            prefix, rest = line_text.split(":", 1)
+            role = prefix.strip()
+            content = rest
+        if role and role in roles:
+            if s_mid is None and idx > cursor_row:
+                s_mid = idx
+            if role in ("comment", "c") and content is not None and __import__("re").match(r"\s*\-\-\-.*", content):
+                if idx < cursor_row:
+                    s_start = idx + 1
+                if idx > cursor_row and s_end == total_lines:
+                    s_end = idx
+    if s_mid is None:
+        s_mid = s_end
+    return s_start, s_mid, s_end
+
+
+def _replace_lines(view: sublime.View, start_row: int, end_row: int, new_text: str) -> int:
+    # Replace lines in [start_row, end_row) with new_text split by \n
+    # Normalize end_row in case buffer shrank
+    total = _get_line_count(view)
+    start_row = max(0, min(start_row, total))
+    end_row = max(0, min(end_row, total))
+
+    if start_row > end_row:
+        start_row, end_row = end_row, start_row
+
+    start_pt = view.text_point(start_row, 0)
+    if end_row >= total:
+        end_pt = view.size()
+        # ensure we remove trailing newline handling consistently
+        region = sublime.Region(start_pt, end_pt)
+    else:
+        end_pt = view.text_point(end_row, 0)
+        region = sublime.Region(start_pt, end_pt)
+
+    # Prepare text with correct newline endings
+    # ST expects exact text to insert
+    view.run_command("tune_replace_region", {"a": start_pt, "b": end_pt, "text": new_text})
+
+    # Return new end row
+    added_lines = 0
+    if new_text:
+        added_lines = new_text.count("\n") + 1
+    return start_row + added_lines
+
+
+def _highlight_rows(view: sublime.View, start_row: int, end_row: int):
+    regions = []
+    total = _get_line_count(view)
+    start_row = max(0, min(start_row, total))
+    end_row = max(0, min(end_row, total))
+    for row in range(start_row, end_row):
+        line = view.full_line(view.text_point(row, 0))
+        regions.append(line)
+    view.add_regions(
+        _highlight_key,
+        regions,
+        scope="markup.changed",  # similar to DiffChange
+        flags=(sublime.DRAW_NO_FILL | sublime.DRAW_NO_OUTLINE | sublime.DRAW_SOLID_UNDERLINE),
+    )
+
+
+class TuneReplaceRegionCommand(sublime_plugin.TextCommand):
+    def run(self, edit, a: int, b: int, text: str):
+        region = sublime.Region(a, b)
+        self.view.replace(edit, region, text)
+
+
+class TuneNewCommand(sublime_plugin.WindowCommand):
+    def run(self, args: str = ""):
+        # Create a new buffer
+        v = self.window.new_file()
+        v.set_name("")
+        v.set_scratch(True)
+        v.assign_syntax("Packages/Chat/syntaxes/Chat.sublime-syntax")
+        initial_text = []
+        if args:
+            initial_text = [f"system: @@{args}", "user:", ""]
+        else:
+            initial_text = ["user:", ""]
+        v.run_command("append", {"characters": "\n".join(initial_text)})
+        # Move caret to last line, col 0
+        v.sel().clear()
+        last_row = max(0, len(initial_text) - 1)
+        v.sel().add(sublime.Region(v.text_point(last_row, 0)))
+        self.window.focus_view(v)
+        v.run_command("enter_insert_mode") if hasattr(v, "run_command") else None
+
+
+class TuneKillCommand(sublime_plugin.TextCommand):
+    def run(self, edit):
+        vid = self.view.id()
+        client = _current_clients.get(vid)
+        if client is not None:
+            client.stop()
+            _current_clients.pop(vid, None)
+        self.view.erase_regions(_highlight_key)
+
+
+class TuneSaveCommand(sublime_plugin.TextCommand):
+    def run(self, edit):
+        # If already has a filename, simply inform
+        if self.view.file_name():
+            sublime.status_message(f"Buffer already has a name: {self.view.file_name()}")
+            return
+
+        client, err = spawn_tune(exports={
+            "resolve": _ctx_resolve,
+            "read": _ctx_read,
+        })
+        if err or not client:
+            sublime.error_message(f"Tune: error starting RPC: {err}")
+            return
+
+        def cb(e, result):
+            if e:
+                sublime.error_message(f"Tune: error giving name: {e}")
+                client.stop()
+                return
+            filename = (result or {}).get("filename") if isinstance(result, dict) else None
+            if filename:
+                # Set as tab name and mark as non-scratch
+                self.view.set_name(filename)
+                self.view.set_scratch(False)
+                self.view.settings().set("tune.suggested_filename", filename)
+            client.stop()
+
+        params = {"filename": "editor-filename.chat", "stop": "assistant", "response": "json"}
+        client.file2run(params, False, cb)
+
+
+class TuneChatCommand(sublime_plugin.TextCommand):
+    def run(self, edit, stop: str = "step"):
+        # Kill any existing client for this view
+        vid = self.view.id()
+        if vid in _current_clients:
+            try:
+                _current_clients[vid].stop()
+            except Exception:
+                pass
+            _current_clients.pop(vid, None)
+
+        # Compute split bounds
+        cursor = self.view.sel()[0].begin() if len(self.view.sel()) else 0
+        cursor_row, cursor_col = self.view.rowcol(cursor)
+        s_start, s_mid, s_end = _compute_split_bounds(self.view, cursor_row)
+
+        # Clear previous highlights
+        self.view.erase_regions(_highlight_key)
+
+        # Render output helper
+        state = {"s_mid": s_mid, "s_end": s_end, "res": ""}
+
+        def render_output(completion: str):
+            self.view.erase_regions(_highlight_key)
+            new_text = completion
+            # Ensure we don't add trailing newline explosion; directly insert text
+            s_end_new = _replace_lines(self.view, state["s_mid"], state["s_end"], new_text)
+            state["s_end"] = s_end_new
+            _highlight_rows(self.view, state["s_mid"], state["s_end"])
+            # move caret to end
+            end_pt = self.view.text_point(state["s_end"], 0)
+            self.view.sel().clear()
+            self.view.sel().add(sublime.Region(end_pt))
+            self.view.show(end_pt)
+
+        # Spawn client
+        filename = self.view.file_name() or (self.view.name() or "")
+        # Grab beginning text [s_start, s_mid)
+        begin_region = sublime.Region(self.view.text_point(s_start, 0), self.view.text_point(s_mid, 0))
+        begin_text = self.view.substr(begin_region)
+
+        client, err = spawn_tune(exports={
+            "resolve": _ctx_resolve,
+            "read": _ctx_read,
+        })
+        if err or not client:
+            render_output("err: \n" + f"tune: failed to start rpc: {err}")
+            return
+
+        _current_clients[vid] = client
+
+        params = {
+            "text": begin_text.rstrip("\n"),
+            "stop": stop,
+            "filename": filename,
+            "response": "chat",
+        }
+
+        render_output("...")
+
+        def on_chunk(e, chunk):
+            if vid not in _current_clients or _current_clients[vid] is not client:
+                return
+            if e:
+                # Render error appended if existed
+                msg = e.get("stack") or e.get("message") or str(e)
+                r = state["res"] if state["res"] else ""
+                if r:
+                    render_output(r + "\nerr: \n" + msg)
+                else:
+                    render_output("err: \n" + msg)
+                try:
+                    client.stop()
+                except Exception:
+                    pass
+                _current_clients.pop(vid, None)
+                # Clear highlight shortly after
+                sublime.set_timeout(lambda: self.view.erase_regions(_highlight_key), 50)
+                return
+            if not chunk:
+                return
+            done = bool(chunk.get("done"))
+            state["res"] = chunk.get("value") or ""
+            # must dispatch to main thread
+            sublime.set_timeout(lambda: render_output(state["res"]), 0)
+            if done:
+                try:
+                    client.stop()
+                except Exception:
+                    pass
+                _current_clients.pop(vid, None)
+                sublime.set_timeout(lambda: self.view.erase_regions(_highlight_key), 50)
+
+        client.file2run(params, True, on_chunk)
+
+
+class TuneCompletions(sublime_plugin.EventListener):
+    def on_query_completions(self, view: sublime.View, prefix: str, locations: List[int]):
+        # Only in Chat files
+        if view.match_selector(locations[0], "text.chat") is False:
+            return None
+
+        row, col = view.rowcol(locations[0])
+        line_region = view.line(locations[0])
+        line_text = view.substr(line_region)
+        before_cursor = line_text[: col - line_region.begin()]
+
+        # Snippet-like completions when entire line is just 'u'/'s'/'c'
+        if before_cursor in ("u", "s", "c") and (locations[0] - line_region.begin()) == 1:
+            items = [
+                ("user:\tSnippet", "user:\n"),
+                ("system:\tSnippet", "system:\n"),
+                ("c: -----------------------------------------\tSnippet", "c: -----------------------------------------\n"),
+            ]
+            return (items, sublime.INHIBIT_WORD_COMPLETIONS | sublime.INHIBIT_EXPLICIT_COMPLETIONS)
+
+        # @mention completion
+        import re
+        m = re.search(r"@[^@\s]*$", before_cursor)
+        if not m:
+            return None
+        query = before_cursor[m.start()+1:]
+
+        clist = sublime.CompletionList()
+
+        def fill():
+            client = _shared_client
+            if client is None:
+                # try start on-demand
+                plugin_loaded()
+            client = _shared_client
+            if client is None:
+                clist.set_completions([], 0)
+                return
+
+            def cb(e, result):
+                if e:
+                    clist.set_completions([], 0)
+                    return
+                items = []
+                if isinstance(result, list):
+                    for item in result:
+                        label = item.get("name") if isinstance(item, dict) else str(item)
+                        menu = "[{}]".format(item.get("source")) if isinstance(item, dict) and item.get("source") else ""
+                        items.append(sublime.CompletionItem.command_completion(
+                            trigger=label,
+                            annotation=menu,
+                            command="insert", args={"characters": label},
+                            kind=(sublime.KIND_ID_VARIABLE, "@", "tune"),
+                        ))
+                clist.set_completions(items, 0)
+
+            client.suggest({"query": query}, False, cb)
+
+        threading.Thread(target=fill, daemon=True).start()
+        return clist
+
+
+# Utility: minimal command to mimic entering insert mode feel (no-op in ST)
+class EnterInsertModeCommand(sublime_plugin.TextCommand):
+    def run(self, edit):
+        pass
+
+
+# Selection commands analogous to textobjects in nvim
+class TuneSelectRoleCommand(sublime_plugin.TextCommand):
+    def run(self, edit, inner: bool = False):
+        start, end = self._find_role_bounds()
+        if start is None:
+            return
+        if inner:
+            start += 1
+        a = self.view.text_point(start, 0)
+        b = self.view.text_point(end, 0)
+        self.view.sel().clear()
+        self.view.sel().add(sublime.Region(a, self.view.line(b).end()))
+        self.view.show(self.view.sel()[0])
+
+    def _find_role_bounds(self) -> Tuple[Optional[int], int]:
+        roles = {"c", "comment", "s", "system", "u", "user", "a", "assistant", "tc", "tool_call", "tr", "tool_result", "err", "error"}
+        total = _get_line_count(self.view)
+        cur = self.view.rowcol(self.view.sel()[0].begin())[0]
+        lines = [self.view.substr(self.view.line(self.view.text_point(i, 0))) for i in range(total)]
+        start_line = None
+        end_line = total - 1
+        for i in range(cur, -1, -1):
+            line = lines[i]
+            role = line.split(":", 1)[0] if ":" in line else None
+            if role and role in roles:
+                start_line = i
+                break
+        for i in range(cur + 1, total):
+            line = lines[i]
+            role = line.split(":", 1)[0] if ":" in line else None
+            if role and role in roles:
+                end_line = i - 1
+                break
+        return start_line, end_line
+
+
+class TuneSelectChatCommand(sublime_plugin.TextCommand):
+    def run(self, edit, inner: bool = False):
+        start, end, header = self._find_chat_bounds()
+        if inner:
+            a = self.view.text_point(start, 0)
+        else:
+            a = self.view.text_point(header if header is not None else start, 0)
+        b = self.view.text_point(end, 0)
+        self.view.sel().clear()
+        self.view.sel().add(sublime.Region(a, self.view.line(b).end()))
+        self.view.show(self.view.sel()[0])
+
+    def _find_chat_bounds(self) -> Tuple[int, int, Optional[int]]:
+        total = _get_line_count(self.view)
+        cur = self.view.rowcol(self.view.sel()[0].begin())[0]
+        header_line = None
+        start_line = 0
+        end_line = total - 1
+        import re
+        for i in range(cur, -1, -1):
+            text = self.view.substr(self.view.line(self.view.text_point(i, 0)))
+            if ":" in text:
+                r, c = text.split(":", 1)
+                if r.strip() in ("c", "comment") and re.match(r"\s*\-\-\-.*", c):
+                    start_line = i + 1
+                    header_line = i
+                    break
+        for i in range(cur + 1, total):
+            text = self.view.substr(self.view.line(self.view.text_point(i, 0)))
+            if ":" in text:
+                r, c = text.split(":", 1)
+                if r.strip() in ("c", "comment") and re.match(r"\s*\-\-\-.*", c):
+                    end_line = i - 1
+                    break
+        return start_line, end_line, header_line
+
+
+class TuneSelectTailCommand(sublime_plugin.TextCommand):
+    def run(self, edit, inner: bool = False):
+        start, end = self._find_tail_bounds(inner)
+        a = self.view.text_point(start, 0)
+        b = self.view.text_point(end, 0)
+        self.view.sel().clear()
+        self.view.sel().add(sublime.Region(a, self.view.line(b).end()))
+        self.view.show(self.view.sel()[0])
+
+    def _find_tail_bounds(self, inner: bool) -> Tuple[int, int]:
+        roles = {"c", "comment", "s", "system", "u", "user", "a", "assistant", "tc", "tool_call", "tr", "tool_result", "err", "error"}
+        total = _get_line_count(self.view)
+        cur = self.view.rowcol(self.view.sel()[0].begin())[0]
+        start_line = cur
+        for i in range(cur, -1, -1):
+            text = self.view.substr(self.view.line(self.view.text_point(i, 0)))
+            role = text.split(":", 1)[0] if ":" in text else None
+            if role and role.strip() in roles:
+                start_line = i
+                break
+        # find end chat boundary
+        import re
+        end_line = total - 1
+        for i in range(cur + 1, total):
+            text = self.view.substr(self.view.line(self.view.text_point(i, 0)))
+            if ":" in text:
+                r, c = text.split(":", 1)
+                if r.strip() in ("c", "comment") and re.match(r"\s*\-\-\-.*", c):
+                    end_line = i - 1
+                    break
+        if inner:
+            start_line = start_line + 1
+        return start_line, end_line
+
+tool_result:
+written
+user:
+is that it?
+if anything left, what is it? tell me without doing yet
+assistant:
+
+tool_call: rf {"filename":"syntaxes/Chat.sublime-syntax","linenum":true}
+tool_result:
+@{ syntaxes/Chat.sublime-syntax | linenum }
+assistant:
+
+tool_call: rf {"filename":"Chat.sublime-settings","linenum":true}
+tool_result:
+@{ Chat.sublime-settings | linenum }
+assistant:
+Almost. The core features are in place, but a few things are still missing or need adjustment for a polished Sublime plugin:
+
+- Key bindings
+  - Add default keymaps for macOS/Windows/Linux that mirror the Neovim mappings:
+    - Enter to run TuneChat // this one is specific for neovim normal mode, sublime does not have it
+
+    - Shift+Enter in insert-like contexts
+    - Ctrl/Cmd+[Shift+]Enter variants to run until assistant
+    - Esc/Ctrl-C to TuneKill
+  - Bind selection helpers (role/chat/tail) or provide Vintage-compatible mappings if you want “ir/ar/ic/ac/it/at”-style behavior.
+
+- Command palette entries
+  - Add Default.sublime-commands to expose:
+    - Tune: New
+    - Tune: Chat (Step)
+    - Tune: Chat (Until assistant)
+    - Tune: Kill
+    - Tune: Save Name
+
+- Syntax/color scheme resource paths
+  - Fix hardcoded package paths:
+    - TuneNew assigns syntax using “Packages/Chat/…” but package name may differ.
+    - Chat.sublime-settings points color_scheme to “Packages/tune/…”. Use this package’s actual name or relative resource references.
+
+- View lifecycle cleanup
+  - Stop per-view RPC client when a view is closed (EventListener.on_close). Currently only plugin_unloaded() handles global shutdown.
+
+- “TuneNew” UX // skip it for now
+  - Add an input panel flow to accept the optional system argument (equivalent to :TuneNew <arg> in nvim).
+  - Optionally make a menu entry under Tools.
+
+- Error handling and messaging
+  - Friendlier error if tune-sdk is not installed or not on PATH; suggest how to install and how to use TUNE_PATH.
+  - Consider a status bar indicator or panel output during streaming.
+
+- File save behavior // does it work like that in sublime?
+  - Current TuneSave sets tab name only. If you want to persist to disk, add a “Save As…” prompt using the suggested filename.
+
+- Minor completion polish
+  - Optionally return completion items with explicit replacement regions so they integrate with Sublime’s completion UX more naturally.
+  - Consider snippets for “user:/system:/c: ---” via .sublime-snippet files, if you prefer snippet engine over completions.
+
+- Vintage/Vim-mode integration (optional) // skip text objects
+  - If you want true text-objects in Vintage, add motions/mappings or document how to use the selection commands with Vintage key bindings.
+
+- Settings // skip settings
+  - Add a plugin settings file to configure defaults (e.g., default stop behavior, highlight scope), and read it in the plugin.
+
+If you want, I can implement these next; let me know your preferred package name so I fix resource paths and create keymaps/commands accordingly.
+// package name - tune
+user:
+see comments inline
+assistant:
+Good progress. Based on your inline notes and “package name = tune,” here’s what’s left to do (without changing files yet):
+
+Must-do
+- Key bindings (scoped to text.chat)
+  - Don’t bind Enter like Vim “normal mode.”
+  - Provide:
+    - macOS: super+enter = TuneChat step; shift+super+enter = TuneChat until assistant; super+escape or ctrl+super+c = TuneKill.
+    - Windows/Linux: ctrl+enter = TuneChat step; ctrl+shift+enter = TuneChat until assistant; ctrl+escape or ctrl+alt+c = TuneKill.
+  - Avoid overriding Esc alone and system/default copy (Ctrl/Cmd+C).
+- Command Palette
+  - Default.sublime-commands entries:
+    - Tune: New (optional arg omitted for now)
+    - Tune: Chat (Step)
+    - Tune: Chat (Until assistant)
+    - Tune: Kill
+    - Tune: Save Name
+- Resource path fix
+  - In TuneNew, set syntax to Packages/tune/syntaxes/Chat.sublime-syntax (currently uses Packages/Chat/...).
+- View lifecycle cleanup
+  - EventListener.on_close to stop any per-view RPC client if still running.
+
+Recommended
+- Error messaging polish
+  - If tune-sdk is missing/not on PATH, show a helpful message and mention TUNE_PATH.
+- Save behavior clarification
+  - In Sublime, set_name only changes the tab title. If you want an actual file saved:
+    - After TuneSave suggests a name, optionally prompt “Save As…” using that suggestion and call view.retarget then view.run_command('save'), or use window.show_input_panel/show_save_dialog.
+- Completion polish
+  - Optionally supply explicit replacement regions or snippets for user:/system:/c: --- via snippet files.
+- Menu (optional)
+  - A Tools > Tune menu via Main.sublime-menu to surface commands.
+
+Skip (per your notes)
+- TuneNew input panel flow for system arg (skip for now).
+- Vintage text-objects style mappings. The selection commands exist but we won’t add Vintage bindings.
+- Plugin settings file for defaults (skip for now).
+
+If you want, I can implement the must-do items next using the package name “tune.”
+user:
+yes implement must-do
+assistant:
+
+tool_call: wf {"filename":"tune.py"}
+import os
+import threading
+from typing import Dict, Optional, Tuple, List
+
+import sublime
+import sublime_plugin
+
+from .tune_jsonrpc import spawn_tune, JsonRpcClient
+
+# State per view
+_current_clients: Dict[int, JsonRpcClient] = {}
+_highlight_key = "tune_generating_text"
+
+# Shared client for suggestions
+_shared_client: Optional[JsonRpcClient] = None
+_shared_lock = threading.Lock()
+
+
+def plugin_loaded():
+    global _shared_client
+    with _shared_lock:
+        if _shared_client is None:
+            client, err = spawn_tune(exports={
+                "resolve": _ctx_resolve,
+                "read": _ctx_read,
+            })
+            if err:
+                print("tune: failed to start shared rpc:", err)
+            else:
+                _shared_client = client
+
+
+def plugin_unloaded():
+    for v_id, client in list(_current_clients.items()):
+        try:
+            client.stop()
+        except Exception:
+            pass
+        _current_clients.pop(v_id, None)
+    global _shared_client
+    if _shared_client is not None:
+        try:
+            _shared_client.stop()
+        except Exception:
+            pass
+        _shared_client = None
+
+
+# Context exports matching tune.context in nvim
+
+def _get_active_view() -> Optional[sublime.View]:
+    win = sublime.active_window()
+    if not win:
+        return None
+    return win.active_view()
+
+
+def _ctx_resolve(params):
+    name = params.get("name") if isinstance(params, dict) else None
+    tbl = {
+        "editor/filename": {"name": "filename", "fullname": "editor/filename", "type": "text"},
+        "editor/buffer": {"name": "buffer", "fullname": "editor/buffer", "type": "text"},
+        "editor/buffers": {"name": "buffers", "fullname": "editor/buffers", "type": "text"},
+        "editor/selection": {"name": "selection", "fullname": "editor/selection", "type": "text"},
+    }
+    return tbl.get(name, {"error": "not found"})
+
+
+def _ctx_read(params):
+    view = _get_active_view()
+    if view is None:
+        return ""
+    name = params.get("name") if isinstance(params, dict) else None
+    if name == "editor/filename":
+        return view.file_name() or (view.name() or "")
+    if name == "editor/buffer":
+        return view.substr(sublime.Region(0, view.size()))
+    if name == "editor/buffers":
+        lines = []
+        for w in sublime.windows():
+            for v in w.views():
+                fn = v.file_name() or v.name() or "untitled"
+                lines.append(f"{v.id()} {fn}")
+        return "\n".join(lines)
+    if name == "editor/selection":
+        sel = view.sel()
+        if not sel:
+            return ""
+        parts = []
+        for r in sel:
+            parts.append(view.substr(r))
+        return "\n".join(parts)
+    return {"error": "not found"}
+
+
+# Helpers
+
+def _get_line_regions(view: sublime.View, line_index: int) -> sublime.Region:
+    pt = view.text_point(line_index, 0)
+    return view.line(pt)
+
+
+def _get_line_count(view: sublime.View) -> int:
+    # approximate by last row of end point
+    return view.rowcol(view.size())[0] + 1
+
+
+def _compute_split_bounds(view: sublime.View, cursor_row: int) -> Tuple[int, int, int]:
+    # Mimic Lua logic: s_start, s_mid, s_end within the buffer
+    roles = {
+        "c", "comment", "s", "system", "u", "user", "a", "assistant",
+        "tc", "tool_call", "tr", "tool_result", "err", "error"
+    }
+    total_lines = _get_line_count(view)
+    s_start = 0  # 0-based row index
+    s_mid: Optional[int] = None
+    s_end = total_lines
+
+    # Walk lines to find boundaries
+    import re
+    dash_header = re.compile(r"\s*\-\-\-.*")
+    for idx in range(total_lines):
+        line_region = view.full_line(view.text_point(idx, 0))
+        line_text = view.substr(line_region).rstrip("\n")
+        role = None
+        content = None
+        if ":" in line_text:
+            prefix, rest = line_text.split(":", 1)
+            role = prefix.strip()
+            content = rest
+        if role and role in roles:
+            if s_mid is None and idx > cursor_row:
+                s_mid = idx
+            if role in ("comment", "c") and content is not None and dash_header.match(content):
+                if idx < cursor_row:
+                    s_start = idx + 1
+                if idx > cursor_row and s_end == total_lines:
+                    s_end = idx
+    if s_mid is None:
+        s_mid = s_end
+    return s_start, s_mid, s_end
+
+
+def _replace_lines(view: sublime.View, start_row: int, end_row: int, new_text: str) -> int:
+    # Replace lines in [start_row, end_row) with new_text split by \n
+    # Normalize end_row in case buffer shrank
+    total = _get_line_count(view)
+    start_row = max(0, min(start_row, total))
+    end_row = max(0, min(end_row, total))
+
+    if start_row > end_row:
+        start_row, end_row = end_row, start_row
+
+    start_pt = view.text_point(start_row, 0)
+    if end_row >= total:
+        end_pt = view.size()
+        region = sublime.Region(start_pt, end_pt)
+    else:
+        end_pt = view.text_point(end_row, 0)
+        region = sublime.Region(start_pt, end_pt)
+
+    view.run_command("tune_replace_region", {"a": start_pt, "b": end_pt, "text": new_text})
+
+    added_lines = 0
+    if new_text:
+        added_lines = new_text.count("\n") + 1
+    return start_row + added_lines
+
+
+def _highlight_rows(view: sublime.View, start_row: int, end_row: int):
+    regions = []
+    total = _get_line_count(view)
+    start_row = max(0, min(start_row, total))
+    end_row = max(0, min(end_row, total))
+    for row in range(start_row, end_row):
+        line = view.full_line(view.text_point(row, 0))
+        regions.append(line)
+    view.add_regions(
+        _highlight_key,
+        regions,
+        scope="markup.changed",  # similar to DiffChange
+        flags=(sublime.DRAW_NO_FILL | sublime.DRAW_NO_OUTLINE | sublime.DRAW_SOLID_UNDERLINE),
+    )
+
+
+class TuneReplaceRegionCommand(sublime_plugin.TextCommand):
+    def run(self, edit, a: int, b: int, text: str):
+        region = sublime.Region(a, b)
+        self.view.replace(edit, region, text)
+
+
+class TuneNewCommand(sublime_plugin.WindowCommand):
+    def run(self, args: str = ""):
+        # Create a new buffer
+        v = self.window.new_file()
+        v.set_name("")
+        v.set_scratch(True)
+        # Use correct package resource path
+        v.assign_syntax("Packages/tune/syntaxes/Chat.sublime-syntax")
+        initial_text = []
+        if args:
+            initial_text = [f"system: @@{args}", "user:", ""]
+        else:
+            initial_text = ["user:", ""]
+        v.run_command("append", {"characters": "\n".join(initial_text)})
+        # Move caret to last line, col 0
+        v.sel().clear()
+        last_row = max(0, len(initial_text) - 1)
+        v.sel().add(sublime.Region(v.text_point(last_row, 0)))
+        self.window.focus_view(v)
+        v.run_command("enter_insert_mode") if hasattr(v, "run_command") else None
+
+
+class TuneKillCommand(sublime_plugin.TextCommand):
+    def run(self, edit):
+        vid = self.view.id()
+        client = _current_clients.get(vid)
+        if client is not None:
+            client.stop()
+            _current_clients.pop(vid, None)
+        self.view.erase_regions(_highlight_key)
+
+
+class TuneSaveCommand(sublime_plugin.TextCommand):
+    def run(self, edit):
+        # If already has a filename, simply inform
+        if self.view.file_name():
+            sublime.status_message(f"Buffer already has a name: {self.view.file_name()}")
+            return
+
+        client, err = spawn_tune(exports={
+            "resolve": _ctx_resolve,
+            "read": _ctx_read,
+        })
+        if err or not client:
+            sublime.error_message(f"Tune: error starting RPC: {err}")
+            return
+
+        def cb(e, result):
+            if e:
+                sublime.error_message(f"Tune: error giving name: {e}")
+                client.stop()
+                return
+            filename = (result or {}).get("filename") if isinstance(result, dict) else None
+            if filename:
+                # Set as tab name and mark as non-scratch
+                self.view.set_name(filename)
+                self.view.set_scratch(False)
+                self.view.settings().set("tune.suggested_filename", filename)
+            client.stop()
+
+        params = {"filename": "editor-filename.chat", "stop": "assistant", "response": "json"}
+        client.file2run(params, False, cb)
+
+
+class TuneChatCommand(sublime_plugin.TextCommand):
+    def run(self, edit, stop: str = "step"):
+        # Kill any existing client for this view
+        vid = self.view.id()
+        if vid in _current_clients:
+            try:
+                _current_clients[vid].stop()
+            except Exception:
+                pass
+            _current_clients.pop(vid, None)
+
+        # Compute split bounds
+        cursor = self.view.sel()[0].begin() if len(self.view.sel()) else 0
+        cursor_row, cursor_col = self.view.rowcol(cursor)
+        s_start, s_mid, s_end = _compute_split_bounds(self.view, cursor_row)
+
+        # Clear previous highlights
+        self.view.erase_regions(_highlight_key)
+
+        # Render output helper
+        state = {"s_mid": s_mid, "s_end": s_end, "res": ""}
+
+        def render_output(completion: str):
+            self.view.erase_regions(_highlight_key)
+            new_text = completion
+            s_end_new = _replace_lines(self.view, state["s_mid"], state["s_end"], new_text)
+            state["s_end"] = s_end_new
+            _highlight_rows(self.view, state["s_mid"], state["s_end"])
+            # move caret to end
+            end_pt = self.view.text_point(state["s_end"], 0)
+            self.view.sel().clear()
+            self.view.sel().add(sublime.Region(end_pt))
+            self.view.show(end_pt)
+
+        # Spawn client
+        filename = self.view.file_name() or (self.view.name() or "")
+        # Grab beginning text [s_start, s_mid)
+        begin_region = sublime.Region(self.view.text_point(s_start, 0), self.view.text_point(s_mid, 0))
+        begin_text = self.view.substr(begin_region)
+
+        client, err = spawn_tune(exports={
+            "resolve": _ctx_resolve,
+            "read": _ctx_read,
+        })
+        if err or not client:
+            render_output("err: \n" + f"tune: failed to start rpc: {err}")
+            return
+
+        _current_clients[vid] = client
+
+        params = {
+            "text": begin_text.rstrip("\n"),
+            "stop": stop,
+            "filename": filename,
+            "response": "chat",
+        }
+
+        render_output("...")
+
+        def on_chunk(e, chunk):
+            if vid not in _current_clients or _current_clients[vid] is not client:
+                return
+            if e:
+                msg = e.get("stack") or e.get("message") or str(e)
+                r = state["res"] if state["res"] else ""
+                if r:
+                    render_output(r + "\nerr: \n" + msg)
+                else:
+                    render_output("err: \n" + msg)
+                try:
+                    client.stop()
+                except Exception:
+                    pass
+                _current_clients.pop(vid, None)
+                sublime.set_timeout(lambda: self.view.erase_regions(_highlight_key), 50)
+                return
+            if not chunk:
+                return
+            done = bool(chunk.get("done"))
+            state["res"] = chunk.get("value") or ""
+            sublime.set_timeout(lambda: render_output(state["res"]), 0)
+            if done:
+                try:
+                    client.stop()
+                except Exception:
+                    pass
+                _current_clients.pop(vid, None)
+                sublime.set_timeout(lambda: self.view.erase_regions(_highlight_key), 50)
+
+        client.file2run(params, True, on_chunk)
+
+
+class TuneCompletions(sublime_plugin.EventListener):
+    def on_query_completions(self, view: sublime.View, prefix: str, locations: List[int]):
+        # Only in Chat files
+        if view.match_selector(locations[0], "text.chat") is False:
+            return None
+
+        row, col = view.rowcol(locations[0])
+        line_region = view.line(locations[0])
+        line_text = view.substr(line_region)
+        before_cursor = line_text[: col - line_region.begin()]
+
+        # Snippet-like completions when entire line is just 'u'/'s'/'c'
+        if before_cursor in ("u", "s", "c") and (locations[0] - line_region.begin()) == 1:
+            items = [
+                ("user:\tSnippet", "user:\n"),
+                ("system:\tSnippet", "system:\n"),
+                ("c: -----------------------------------------\tSnippet", "c: -----------------------------------------\n"),
+            ]
+            return (items, sublime.INHIBIT_WORD_COMPLETIONS | sublime.INHIBIT_EXPLICIT_COMPLETIONS)
+
+        # @mention completion
+        import re
+        m = re.search(r"@[^@\s]*$", before_cursor)
+        if not m:
+            return None
+        query = before_cursor[m.start()+1:]
+
+        clist = sublime.CompletionList()
+
+        def fill():
+            client = _shared_client
+            if client is None:
+                # try start on-demand
+                plugin_loaded()
+            client = _shared_client
+            if client is None:
+                clist.set_completions([], 0)
+                return
+
+            def cb(e, result):
+                if e:
+                    clist.set_completions([], 0)
+                    return
+                items = []
+                if isinstance(result, list):
+                    for item in result:
+                        label = item.get("name") if isinstance(item, dict) else str(item)
+                        menu = "[{}]".format(item.get("source")) if isinstance(item, dict) and item.get("source") else ""
+                        items.append(sublime.CompletionItem.command_completion(
+                            trigger=label,
+                            annotation=menu,
+                            command="insert", args={"characters": label},
+                            kind=(sublime.KIND_ID_VARIABLE, "@", "tune"),
+                        ))
+                clist.set_completions(items, 0)
+
+            client.suggest({"query": query}, False, cb)
+
+        threading.Thread(target=fill, daemon=True).start()
+        return clist
+
+
+# Utility: minimal command to mimic entering insert mode feel (no-op in ST)
+class EnterInsertModeCommand(sublime_plugin.TextCommand):
+    def run(self, edit):
+        pass
+
+
+# Selection commands analogous to textobjects in nvim
+class TuneSelectRoleCommand(sublime_plugin.TextCommand):
+    def run(self, edit, inner: bool = False):
+        start, end = self._find_role_bounds()
+        if start is None:
+            return
+        if inner:
+            start += 1
+        a = self.view.text_point(start, 0)
+        b = self.view.text_point(end, 0)
+        self.view.sel().clear()
+        self.view.sel().add(sublime.Region(a, self.view.line(b).end()))
+        self.view.show(self.view.sel()[0])
+
+    def _find_role_bounds(self) -> Tuple[Optional[int], int]:
+        roles = {"c", "comment", "s", "system", "u", "user", "a", "assistant", "tc", "tool_call", "tr", "tool_result", "err", "error"}
+        total = _get_line_count(self.view)
+        cur = self.view.rowcol(self.view.sel()[0].begin())[0]
+        lines = [self.view.substr(self.view.line(self.view.text_point(i, 0))) for i in range(total)]
+        start_line = None
+        end_line = total - 1
+        for i in range(cur, -1, -1):
+            line = lines[i]
+            role = line.split(":", 1)[0] if ":" in line else None
+            if role and role in roles:
+                start_line = i
+                break
+        for i in range(cur + 1, total):
+            line = lines[i]
+            role = line.split(":", 1)[0] if ":" in line else None
+            if role and role in roles:
+                end_line = i - 1
+                break
+        return start_line, end_line
+
+
+class TuneSelectChatCommand(sublime_plugin.TextCommand):
+    def run(self, edit, inner: bool = False):
+        start, end, header = self._find_chat_bounds()
+        if inner:
+            a = self.view.text_point(start, 0)
+        else:
+            a = self.view.text_point(header if header is not None else start, 0)
+        b = self.view.text_point(end, 0)
+        self.view.sel().clear()
+        self.view.sel().add(sublime.Region(a, self.view.line(b).end()))
+        self.view.show(self.view.sel()[0])
+
+    def _find_chat_bounds(self) -> Tuple[int, int, Optional[int]]:
+        total = _get_line_count(self.view)
+        cur = self.view.rowcol(self.view.sel()[0].begin())[0]
+        header_line = None
+        start_line = 0
+        end_line = total - 1
+        import re
+        for i in range(cur, -1, -1):
+            text = self.view.substr(self.view.line(self.view.text_point(i, 0)))
+            if ":" in text:
+                r, c = text.split(":", 1)
+                if r.strip() in ("c", "comment") and re.match(r"\s*\-\-\-.*", c):
+                    start_line = i + 1
+                    header_line = i
+                    break
+        for i in range(cur + 1, total):
+            text = self.view.substr(self.view.line(self.view.text_point(i, 0)))
+            if ":" in text:
+                r, c = text.split(":", 1)
+                if r.strip() in ("c", "comment") and re.match(r"\s*\-\-\-.*", c):
+                    end_line = i - 1
+                    break
+        return start_line, end_line, header_line
+
+
+class TuneSelectTailCommand(sublime_plugin.TextCommand):
+    def run(self, edit, inner: bool = False):
+        start, end = self._find_tail_bounds(inner)
+        a = self.view.text_point(start, 0)
+        b = self.view.text_point(end, 0)
+        self.view.sel().clear()
+        self.view.sel().add(sublime.Region(a, self.view.line(b).end()))
+        self.view.show(self.view.sel()[0])
+
+    def _find_tail_bounds(self, inner: bool) -> Tuple[int, int]:
+        roles = {"c", "comment", "s", "system", "u", "user", "a", "assistant", "tc", "tool_call", "tr", "tool_result", "err", "error"}
+        total = _get_line_count(self.view)
+        cur = self.view.rowcol(self.view.sel()[0].begin())[0]
+        start_line = cur
+        for i in range(cur, -1, -1):
+            text = self.view.substr(self.view.line(self.view.text_point(i, 0)))
+            role = text.split(":", 1)[0] if ":" in text else None
+            if role and role.strip() in roles:
+                start_line = i
+                break
+        # find end chat boundary
+        import re
+        end_line = total - 1
+        for i in range(cur + 1, total):
+            text = self.view.substr(self.view.line(self.view.text_point(i, 0)))
+            if ":" in text:
+                r, c = text.split(":", 1)
+                if r.strip() in ("c", "comment") and re.match(r"\s*\-\-\-.*", c):
+                    end_line = i - 1
+                    break
+        if inner:
+            start_line = start_line + 1
+        return start_line, end_line
+
+
+class TuneCleanupListener(sublime_plugin.EventListener):
+    def on_close(self, view: sublime.View):
+        vid = view.id()
+        client = _current_clients.get(vid)
+        if client is not None:
+            try:
+                client.stop()
+            except Exception:
+                pass
+            _current_clients.pop(vid, None)
+        view.erase_regions(_highlight_key)
+tool_result:
+written
+assistant:
+
+tool_call: wf {"filename":"Default.sublime-commands"}
+[
+  {"caption": "Tune: New", "command": "tune_new"},
+  {"caption": "Tune: Chat (Step)", "command": "tune_chat", "args": {"stop": "step"}},
+  {"caption": "Tune: Chat (Until assistant)", "command": "tune_chat", "args": {"stop": "assistant"}},
+  {"caption": "Tune: Kill", "command": "tune_kill"},
+  {"caption": "Tune: Save Name", "command": "tune_save"}
+]
+
+tool_result:
+written
+assistant:
+
+tool_call: wf {"filename":"Default (OSX).sublime-keymap"}
+[
+  // Key bindings for Chat syntax only
+  { "keys": ["super+enter"], "command": "tune_chat", "args": {"stop": "step"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["shift+super+enter"], "command": "tune_chat", "args": {"stop": "assistant"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["super+escape"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["ctrl+super+c"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]}
+]
+
+tool_result:
+written
+assistant:
+
+tool_call: wf {"filename":"Default.sublime-keymap"}
+[
+  // Windows/Linux
+  { "keys": ["ctrl+enter"], "command": "tune_chat", "args": {"stop": "step"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["ctrl+shift+enter"], "command": "tune_chat", "args": {"stop": "assistant"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["ctrl+escape"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["ctrl+alt+c"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]}
+]
+tool_result:
+written
+assistant:
+Implemented the must-do items:
+
+- Resource path fix
+  - TuneNew now assigns syntax using Packages/tune/syntaxes/Chat.sublime-syntax.
+
+- Command palette
+  - Default.sublime-commands with commands:
+    - Tune: New
+    - Tune: Chat (Step)
+    - Tune: Chat (Until assistant)
+    - Tune: Kill
+    - Tune: Save Name
+
+- Key bindings
+  - macOS: Default (OSX).sublime-keymap
+    - super+enter: TuneChat step
+    - shift+super+enter: TuneChat until assistant
+    - super+escape or ctrl+super+c: TuneKill
+  - Windows/Linux: Default.sublime-keymap
+    - ctrl+enter: TuneChat step
+    - ctrl+shift+enter: TuneChat until assistant
+    - ctrl+escape or ctrl+alt+c: TuneKill
+  - All bindings are scoped to text.chat.
+
+- View lifecycle cleanup
+  - TuneCleanupListener.on_close stops any per-view RPC client and clears highlights.
+
+Everything else remains as before.
+
+If you want, next we can:
+- Improve errors for missing tune-sdk/TUNE_PATH.
+- Offer Save As using the suggested name from TuneSave.
+- Add menus or snippets for user/system/comment starters.
+

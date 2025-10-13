@@ -1,0 +1,70 @@
+system: @@system
+user:
+i have few errors in the syntax
+
+e.g.
+\@abc \@result
+in this case \@abc is set as variable but \@result is not recognised
+
+also after c: content is set as comment but not after comment:
+assistant:
+
+tool_call: rf {"filename":"syntaxes/Chat.sublime-syntax","linenum":true}
+tool_result:
+@{ syntaxes/Chat.sublime-syntax | linenum }
+assistant:
+
+tool_call: patch {"filename":"syntaxes/Chat.sublime-syntax"}
+<<<<<<< ORIGINAL
+  main:
+    # Comment block (enters comment context)
+    - match: '^(?=c(?:omment)?:)'
+      set: comment
+
+    # system: (expandable)
+    - match: '^(s(?:ystem)?):'
+      captures:
+        1: keyword.constant.chat
+      push: message-expandable
+=======
+  main:
+    # Comment block: consume the label and enter comment context
+    - match: '^(c(?:omment)?):'
+      captures:
+        1: keyword.constant.chat
+      push: comment
+
+    # system: (expandable)
+    - match: '^(s(?:ystem)?):'
+      captures:
+        1: keyword.constant.chat
+      push: message-expandable
+>>>>>>> UPDATED
+tool_result:
+patched
+assistant:
+
+tool_call: patch {"filename":"syntaxes/Chat.sublime-syntax"}
+<<<<<<< ORIGINAL
+    # @var or @@var; @{...} or @@{...}
+    - match: '@@(?:\{[^}]+\}|\S+)|@(?:\{[^}]+\}|\S+)'
+      scope: string.other.chat
+
+    # Plain text
+    - match: '.+'
+      scope: text.plain
+=======
+    # @var or @@var; @{...} or @@{...}
+    - match: '@@(?:\{[^}]+\}|\S+)|@(?:\{[^}]+\}|\S+)'
+      scope: string.other.chat
+
+    # Plain text chunks that don't include '@' (so we don't swallow following variables)
+    - match: "[^@\\\n]+"
+      scope: text.plain
+
+    # Fallback single character (including stray '@')
+    - match: '.'
+      scope: text.plain
+>>>>>>> UPDATED
+tool_result:
+patched

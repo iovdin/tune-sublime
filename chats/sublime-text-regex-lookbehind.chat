@@ -1,0 +1,53 @@
+user:
+how in sublime text syntax in match look backward? 
+like (?= looks forward
+assistant:
+In regular expressions, lookaheads like `(?=...)` look forward, and lookbehinds look backward. Sublime Text uses the Oniguruma regex engine (same as Ruby, etc.), which supports both lookahead and lookbehind assertions.
+
+### Lookbehind syntax (in Sublime Text regex):
+- Positive lookbehind: `(?<=...)`
+- Negative lookbehind: `(?<!...)`
+
+Example:
+
+- `(?<=foo)bar` matches `bar` only if it is **preceded** by `foo`.
+- `(?<!foo)bar` matches `bar` only if it is **not preceded** by `foo`.
+
+---
+
+### Important notes for Sublime Text:
+
+- Lookbehind assertions must have fixed width. That means you cannot use variable-length patterns inside lookbehinds. For example, `(?<=\d{3})` (fixed length 3 digits) is allowed, but `(?<=\d+)` (variable length) is not.
+- This is a limitation of Oniguruma regex engine Sublime Text uses.
+
+---
+
+### Summary
+
+- To look backward in Sublime Text regex syntax, use:
+
+```regex
+(?<=your_fixed_length_pattern)
+```
+
+or negative lookbehind
+
+```regex
+(?<!your_fixed_length_pattern)
+```
+
+---
+
+### Example
+
+Say you want to match `bar` only when preceded by `foo`:
+
+```regex
+(?<=foo)bar
+```
+
+This will highlight `bar` only when `foo` is immediately before it.
+
+---
+
+If you want help creating a specific regex pattern for Sublime Text syntax, just ask!

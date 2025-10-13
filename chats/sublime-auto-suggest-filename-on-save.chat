@@ -1,0 +1,560 @@
+system: @@system
+user:
+@claude-sonnet-4-5-20250929
+i have TuneSave command, i want it to be automatically run when user tries to save file and give the popup with the suggeseted filename
+assistant:
+
+tool_call: rf {"filename":"tune.py","linenum":false}
+tool_result:
+@tune.py 
+assistant:
+Now let me check the Default.sublime-commands file to see how TuneSave is currently defined:
+tool_call: rf {"filename":"Default.sublime-commands","linenum":false}
+tool_result:
+@Default.sublime-commands
+assistant:
+Now let me check if there's an event listener for save actions. I'll need to create a new event listener that intercepts the save action and triggers the TuneSave command instead. Here's my plan:
+
+1. Create an event listener that catches when the user tries to save a file without a filename
+2. When this happens, run the TuneSave command to get a suggested filename
+3. Show an input panel with the suggested filename for the user to confirm or edit
+
+Let me update the tune.py file:
+tool_call: patch {"filename":"tune.py"}
+<<<<<<< ORIGINAL
+class TuneCleanupListener(sublime_plugin.EventListener):
+    def on_close(self, view: sublime.View):
+        vid = view.id()
+        client = _current_clients.get(vid)
+        if client is not None:
+            try:
+                client.stop()
+            except Exception:
+                pass
+            _current_clients.pop(vid, None)
+        view.erase_regions(_highlight_key)
+=======
+class TuneAutoSaveCommand(sublime_plugin.TextCommand):
+    """Command that intercepts save and suggests filename if needed."""
+    def run(self, edit):
+        # If view already has a filename, just save normally
+        if self.view.file_name():
+            self.view.run_command("save")
+            return
+        
+        # Otherwise, get a suggested filename
+        client, err = spawn_tune(
+            exports={
+                "resolve": _ctx_resolve,
+                "read": _ctx_read,
+            },
+            cwd=_get_project_folder()
+        )
+        if err or not client:
+            sublime.error_message(f"Tune: error starting RPC: {err}")
+            # Fall back to normal save dialog
+            self.view.run_command("save")
+            return
+
+        def cb(e, result):
+            if e:
+                sublime.error_message(f"Tune: error generating filename: {e}")
+                client.stop()
+                # Fall back to normal save dialog
+                self.view.run_command("save")
+                return
+            
+            filename = (result or {}).get("filename") if isinstance(result, dict) else None
+            client.stop()
+            
+            if not filename:
+                # No suggestion available, use normal save dialog
+                self.view.run_command("save")
+                return
+            
+            # Show input panel with suggested filename
+            def on_done(user_filename):
+                if not user_filename:
+                    return
+                
+                # Determine full path
+                project_folder = _get_project_folder()
+                if project_folder:
+                    full_path = os.path.join(project_folder, user_filename)
+                else:
+                    full_path = user_filename
+                
+                # Save the file
+                try:
+                    content = self.view.substr(sublime.Region(0, self.view.size()))
+                    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                    with open(full_path, 'w', encoding='utf-8') as f:
+                        f.write(content)
+                    
+                    # Set the filename and mark as saved
+                    self.view.retarget(full_path)
+                    self.view.set_scratch(False)
+                    sublime.status_message(f"Saved as {user_filename}")
+                except Exception as ex:
+                    sublime.error_message(f"Error saving file: {ex}")
+            
+            def on_cancel():
+                pass
+            
+            window = self.view.window()
+            if window:
+                window.show_input_panel(
+                    "Save as:",
+                    filename,
+                    on_done,
+                    None,
+                    on_cancel
+                )
+
+        params = {"filename": "editor-filename.chat", "stop": "assistant", "response": "json"}
+        client.file2run(params, False, cb)
+
+
+class TuneCleanupListener(sublime_plugin.EventListener):
+    def on_close(self, view: sublime.View):
+        vid = view.id()
+        client = _current_clients.get(vid)
+        if client is not None:
+            try:
+                client.stop()
+            except Exception:
+                pass
+            _current_clients.pop(vid, None)
+        view.erase_regions(_highlight_key)
+    
+    def on_pre_save(self, view: sublime.View):
+        """Intercept save for Chat files without a filename."""
+        # Only intercept for Chat syntax files
+        if not view.match_selector(0, "text.chat"):
+            return
+        
+        # If already has a filename, let it save normally
+        if view.file_name():
+            return
+        
+        # Cancel the save and trigger our custom save command instead
+        sublime.set_timeout(lambda: view.run_command("tune_auto_save"), 0)
+        # Note: We can't actually prevent the save dialog here, but we can
+        # trigger our command which will show the suggested filename
+>>>>>>> UPDATED
+
+tool_result:
+patched
+assistant:
+I see the code was already there. Now I need to fix the issue - the problem is that `on_pre_save` can't really prevent the default save dialog from appearing in Sublime Text. We need a different approach. Let me revise this to use a ViewEventListener and override the save key binding instead:
+tool_call: rf {"filename":"Default.sublime-keymap","linenum":false}
+tool_result:
+@Default.sublime-keymap
+assistant:
+Now let me update the keybindings to override Ctrl+S (and Cmd+S on Mac) to use our custom save command for Chat files:
+tool_call: patch {"filename":"Default.sublime-keymap"}
+<<<<<<< ORIGINAL
+[
+  // Windows/Linux
+  { "keys": ["shift+enter"], "command": "tune_chat", "args": {"stop": "step"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["ctrl+enter"], "command": "tune_chat", "args": {"stop": "assistant"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["escape"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["ctrl+c"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]}
+]
+=======
+[
+  // Windows/Linux
+  { "keys": ["shift+enter"], "command": "tune_chat", "args": {"stop": "step"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["ctrl+enter"], "command": "tune_chat", "args": {"stop": "assistant"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["escape"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["ctrl+c"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["ctrl+s"], "command": "tune_auto_save", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]}
+]
+>>>>>>> UPDATED
+tool_result:
+patched
+assistant:
+Now let's check the OSX keymap:
+tool_call: rf {"filename":"Default (OSX).sublime-keymap","linenum":false}
+tool_result:
+@{Default (OSX).sublime-keymap}
+assistant:
+
+tool_call: patch {"filename":"Default (OSX).sublime-keymap"}
+<<<<<<< ORIGINAL
+[
+  // macOS
+  { "keys": ["shift+enter"], "command": "tune_chat", "args": {"stop": "step"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["super+enter"], "command": "tune_chat", "args": {"stop": "assistant"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["escape"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["super+c"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]}
+]
+=======
+[
+  // macOS
+  { "keys": ["shift+enter"], "command": "tune_chat", "args": {"stop": "step"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["super+enter"], "command": "tune_chat", "args": {"stop": "assistant"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["escape"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["super+c"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["super+s"], "command": "tune_auto_save", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]}
+]
+>>>>>>> UPDATED
+tool_result:
+patched
+assistant:
+Now let's update the tune.py file to remove the on_pre_save hook (which doesn't work properly anyway) and simplify the TuneAutoSaveCommand:
+tool_call: patch {"filename":"tune.py"}
+<<<<<<< ORIGINAL
+class TuneCleanupListener(sublime_plugin.EventListener):
+    def on_close(self, view: sublime.View):
+        vid = view.id()
+        client = _current_clients.get(vid)
+        if client is not None:
+            try:
+                client.stop()
+            except Exception:
+                pass
+            _current_clients.pop(vid, None)
+        view.erase_regions(_highlight_key)
+    
+    def on_pre_save(self, view: sublime.View):
+        """Intercept save for Chat files without a filename."""
+        # Only intercept for Chat syntax files
+        if not view.match_selector(0, "text.chat"):
+            return
+        
+        # If already has a filename, let it save normally
+        if view.file_name():
+            return
+        
+        # Cancel the save and trigger our custom save command instead
+        sublime.set_timeout(lambda: view.run_command("tune_auto_save"), 0)
+        # Note: We can't actually prevent the save dialog here, but we can
+        # trigger our command which will show the suggested filename
+=======
+class TuneCleanupListener(sublime_plugin.EventListener):
+    def on_close(self, view: sublime.View):
+        vid = view.id()
+        client = _current_clients.get(vid)
+        if client is not None:
+            try:
+                client.stop()
+            except Exception:
+                pass
+            _current_clients.pop(vid, None)
+        view.erase_regions(_highlight_key)
+>>>>>>> UPDATED
+tool_result:
+patched
+assistant:
+Perfect! Now let me verify that the TuneAutoSaveCommand is working correctly. Let me review the full implementation:
+tool_call: sh
+grep -A 80 "class TuneAutoSaveCommand" tune.py
+tool_result:
+class TuneAutoSaveCommand(sublime_plugin.TextCommand):
+    """Command that intercepts save and suggests filename if needed."""
+    def run(self, edit):
+        # If view already has a filename, just save normally
+        if self.view.file_name():
+            self.view.run_command("save")
+            return
+        
+        # Otherwise, get a suggested filename
+        client, err = spawn_tune(
+            exports={
+                "resolve": _ctx_resolve,
+                "read": _ctx_read,
+            },
+            cwd=_get_project_folder()
+        )
+        if err or not client:
+            sublime.error_message(f"Tune: error starting RPC: {err}")
+            # Fall back to normal save dialog
+            self.view.run_command("save")
+            return
+
+        def cb(e, result):
+            if e:
+                sublime.error_message(f"Tune: error generating filename: {e}")
+                client.stop()
+                # Fall back to normal save dialog
+                self.view.run_command("save")
+                return
+            
+            filename = (result or {}).get("filename") if isinstance(result, dict) else None
+            client.stop()
+            
+            if not filename:
+                # No suggestion available, use normal save dialog
+                self.view.run_command("save")
+                return
+            
+            # Show input panel with suggested filename
+            def on_done(user_filename):
+                if not user_filename:
+                    return
+                
+                # Determine full path
+                project_folder = _get_project_folder()
+                if project_folder:
+                    full_path = os.path.join(project_folder, user_filename)
+                else:
+                    full_path = user_filename
+                
+                # Save the file
+                try:
+                    content = self.view.substr(sublime.Region(0, self.view.size()))
+                    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                    with open(full_path, 'w', encoding='utf-8') as f:
+                        f.write(content)
+                    
+                    # Set the filename and mark as saved
+                    self.view.retarget(full_path)
+                    self.view.set_scratch(False)
+                    sublime.status_message(f"Saved as {user_filename}")
+                except Exception as ex:
+                    sublime.error_message(f"Error saving file: {ex}")
+            
+            def on_cancel():
+                pass
+            
+            window = self.view.window()
+            if window:
+                window.show_input_panel(
+                    "Save as:",
+                    filename,
+                    on_done,
+                    None,
+                    on_cancel
+                )
+
+        params = {"filename": "editor-filename.chat", "stop": "assistant", "response": "json"}
+        client.file2run(params, False, cb)
+
+
+
+assistant:
+Great! Now let's create a summary of what was implemented:
+
+## Summary
+
+I've successfully implemented automatic filename suggestion when saving Chat files. Here's what was done:
+
+### Changes Made:
+
+1. **tune.py** - Added `TuneAutoSaveCommand`:
+   - Checks if the file already has a filename - if yes, saves normally
+   - If no filename exists, spawns a Tune RPC client to generate a suggested filename
+   - Shows an input panel with the suggested filename for the user to review/edit
+   - Saves the file with the chosen filename
+
+2. **Default.sublime-keymap** - Added keybinding:
+   - `Ctrl+S` triggers `tune_auto_save` command for Chat files on Windows/Linux
+
+3. **Default (OSX).sublime-keymap** - Added keybinding:
+   - `Cmd+S` triggers `tune_auto_save` command for Chat files on macOS
+
+### How It Works:
+
+1. When a user presses `Ctrl+S` (or `Cmd+S` on Mac) in a Chat file without a filename:
+   - The custom `tune_auto_save` command is triggered instead of the default save
+   - Tune generates a suggested filename based on the chat content
+   - A popup appears with the suggested filename
+   - User can accept, edit, or cancel the save
+
+2. If the file already has a filename, it just saves normally
+
+3. If there's any error or Tune can't generate a suggestion, it falls back to the standard save dialog
+
+The implementation ensures that Chat files get meaningful, AI-generated filenames automatically while still allowing users full control to modify the suggestion before saving.
+user:
+can you make it so that user is shown standard save dialog with the filename suggested?
+assistant:
+
+tool_call: patch {"filename":"tune.py"}
+<<<<<<< ORIGINAL
+class TuneAutoSaveCommand(sublime_plugin.TextCommand):
+    """Command that intercepts save and suggests filename if needed."""
+    def run(self, edit):
+        # If view already has a filename, just save normally
+        if self.view.file_name():
+            self.view.run_command("save")
+            return
+        
+        # Otherwise, get a suggested filename
+        client, err = spawn_tune(
+            exports={
+                "resolve": _ctx_resolve,
+                "read": _ctx_read,
+            },
+            cwd=_get_project_folder()
+        )
+        if err or not client:
+            sublime.error_message(f"Tune: error starting RPC: {err}")
+            # Fall back to normal save dialog
+            self.view.run_command("save")
+            return
+
+        def cb(e, result):
+            if e:
+                sublime.error_message(f"Tune: error generating filename: {e}")
+                client.stop()
+                # Fall back to normal save dialog
+                self.view.run_command("save")
+                return
+            
+            filename = (result or {}).get("filename") if isinstance(result, dict) else None
+            client.stop()
+            
+            if not filename:
+                # No suggestion available, use normal save dialog
+                self.view.run_command("save")
+                return
+            
+            # Show input panel with suggested filename
+            def on_done(user_filename):
+                if not user_filename:
+                    return
+                
+                # Determine full path
+                project_folder = _get_project_folder()
+                if project_folder:
+                    full_path = os.path.join(project_folder, user_filename)
+                else:
+                    full_path = user_filename
+                
+                # Save the file
+                try:
+                    content = self.view.substr(sublime.Region(0, self.view.size()))
+                    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                    with open(full_path, 'w', encoding='utf-8') as f:
+                        f.write(content)
+                    
+                    # Set the filename and mark as saved
+                    self.view.retarget(full_path)
+                    self.view.set_scratch(False)
+                    sublime.status_message(f"Saved as {user_filename}")
+                except Exception as ex:
+                    sublime.error_message(f"Error saving file: {ex}")
+            
+            def on_cancel():
+                pass
+            
+            window = self.view.window()
+            if window:
+                window.show_input_panel(
+                    "Save as:",
+                    filename,
+                    on_done,
+                    None,
+                    on_cancel
+                )
+
+        params = {"filename": "editor-filename.chat", "stop": "assistant", "response": "json"}
+        client.file2run(params, False, cb)
+=======
+class TuneAutoSaveCommand(sublime_plugin.TextCommand):
+    """Command that intercepts save and suggests filename if needed."""
+    def run(self, edit):
+        # If view already has a filename, just save normally
+        if self.view.file_name():
+            self.view.run_command("save")
+            return
+        
+        # Otherwise, get a suggested filename
+        client, err = spawn_tune(
+            exports={
+                "resolve": _ctx_resolve,
+                "read": _ctx_read,
+            },
+            cwd=_get_project_folder()
+        )
+        if err or not client:
+            # Fall back to normal save dialog
+            self.view.window().run_command("save_as")
+            return
+
+        def cb(e, result):
+            if e:
+                client.stop()
+                # Fall back to normal save dialog
+                sublime.set_timeout(lambda: self.view.window().run_command("save_as"), 0)
+                return
+            
+            filename = (result or {}).get("filename") if isinstance(result, dict) else None
+            client.stop()
+            
+            if not filename:
+                # No suggestion available, use normal save dialog
+                sublime.set_timeout(lambda: self.view.window().run_command("save_as"), 0)
+                return
+            
+            # Set the suggested name temporarily so it appears in the save dialog
+            project_folder = _get_project_folder()
+            if project_folder:
+                suggested_path = os.path.join(project_folder, filename)
+            else:
+                suggested_path = filename
+            
+            # Set the name and open save dialog
+            self.view.set_name(filename)
+            sublime.set_timeout(lambda: self.view.window().run_command("save_as"), 0)
+
+        params = {"filename": "editor-filename.chat", "stop": "assistant", "response": "json"}
+        client.file2run(params, False, cb)
+>>>>>>> UPDATED
+tool_result:
+patched
+assistant:
+Perfect! I've updated the `TuneAutoSaveCommand` to use the standard save dialog with the suggested filename pre-filled. 
+
+### What Changed:
+
+Instead of showing a custom input panel, the command now:
+1. Gets the suggested filename from Tune
+2. Sets it as the view's name using `self.view.set_name(filename)`
+3. Opens the standard "Save As" dialog with `save_as` command
+
+This way users get the familiar native save dialog with the AI-generated filename already filled in, and they can:
+- Navigate to any folder they want
+- Edit the filename
+- See file browser/picker
+- Cancel if needed
+
+The standard save dialog provides a much better user experience than a simple input panel!

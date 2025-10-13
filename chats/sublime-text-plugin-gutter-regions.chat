@@ -1,0 +1,74 @@
+user:
+@gpt-5
+im making syntax package for sublime 
+basically i want to show that some blocks of text has certain color like vertical line in ruler
+close to this block of text, like it has right now green for changed text
+
+assistant:
+Short answer: you can’t do that from a .sublime-syntax file. Syntax definitions only assign scopes for coloring text. The green bars you see for modified lines are gutter markers, and those require a plugin (Python) that adds regions with a gutter icon.
+
+How to implement it
+- Detect the blocks you care about (either by regex or by the scopes your syntax assigns).
+- Use a plugin to add regions covering those lines.
+- Provide a thin gutter icon (PNG) so it looks like a vertical bar next to each marked line.
+
+Minimal example
+
+1) Create an icon:
+- Make Packages/YourPkg/icons/bar.png (16×16 transparent PNG with a 2–3 px vertical rectangle on one edge). Its color is whatever you draw in the PNG.
+
+2) Plugin code (save as Packages/YourPkg/block_gutter.py):
+
+import sublime
+import sublime_plugin
+
+KEY = "my_block_gutter"
+
+class BlockGutterMarks(sublime_plugin.ViewEventListener):
+    @classmethod
+    def is_applicable(cls, settings):
+        # Optionally filter to your syntax:
+        # return "Your Syntax.sublime-syntax" in (settings.get("syntax") or "")
+        return True
+
+    def on_load_async(self):
+        self.update()
+
+    def on_activated_async(self):
+        self.update()
+
+    def on_modified_async(self):
+        self.update()
+
+    def update(self):
+        v = self.view
+
+        # Example 1: find blocks by scope your syntax emits, e.g. meta.block.special
+        blocks = v.find_by_selector("meta.block.special")
+
+        # Example 2 (alternative): find blocks by regex
+        # blocks = v.find_all(r"(?s)BEGIN_BLOCK.*?END_BLOCK")
+
+        # Expand regions to full lines so the gutter icon appears on each line
+        line_regions = []
+        for r in blocks:
+            start = v.line(r.begin()).begin()
+            end = v.line(r.end()).end()
+            line_regions.append(sublime.Region(start, end))
+
+        v.add_regions(
+            KEY,
+            line_regions,
+            scope="markup.changed",                      # affects selection/underline colors, not the PNG
+            icon="Packages/YourPkg/icons/bar.png",       # your thin vertical bar
+            flags=sublime.DRAW_NO_FILL | sublime.DRAW_NO_OUTLINE | sublime.PERSISTENT
+        )
+
+Notes and tips
+- Syntax vs plugin: .sublime-syntax can’t draw in the gutter or rulers. You need the plugin.
+- Rulers: rulers are global vertical guides at fixed columns and can’t be colored per-region.
+- Color: custom PNG gutter icons are not tinted by the color scheme; make separate colored PNGs if you need multiple colors, or use built-in icons like "dot"/"circle"/"bookmark" if you want theme-tinted symbols (but they aren’t bars).
+- Performance: prefer view.find_by_selector(...) using scopes from your syntax; it’s fast and incremental. If you use regex, throttle updates if the file is large.
+- Multi-types: you can call add_regions with different keys/icons to show different colors for different block types.
+
+If you describe how you identify your “blocks” (scopes or patterns), I can tailor the find logic and icon setup.

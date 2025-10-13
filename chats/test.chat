@@ -1,0 +1,42 @@
+system:
+s:
+hello world 
+@gpt @@gpt 
+
+@abc @result
+
+@{ hello world | hello world }
+
+hello world 
+
+user:
+u:
+hello 
+
+assistant:
+a:
+world
+
+tool_call: name {name: "value"}
+text
+tc: name
+
+
+
+tool_result: 
+some result
+tr: res
+@abc 
+
+comment:
+hello world @abc 
+
+c:
+comment
+comment
+
+error:
+err
+
+err:
+hello 

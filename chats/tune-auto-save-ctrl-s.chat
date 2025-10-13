@@ -1,0 +1,139 @@
+system: @@system
+user:
+i have Tune: Save Name command which gives name to current unnamed buffer,
+i want you to run it on cmd+s or ctrl+s - generate name and then open standard save as dialog
+assistant:
+
+tool_call: rf {"filename":"Default.sublime-commands","linenum":true}
+tool_result:
+@{ Default.sublime-commands | linenum }
+assistant:
+
+tool_call: rf {"filename":"Default.sublime-keymap","linenum":true}
+tool_result:
+@{ Default.sublime-keymap | linenum }
+assistant:
+
+tool_call: rf {"filename":"Default (OSX).sublime-keymap","linenum":true}
+tool_result:
+@{ Default (OSX).sublime-keymap | linenum }
+assistant:
+
+tool_call: rf {"filename":"tune.py","linenum":true}
+tool_result:
+@{ tune.py | linenum }
+assistant:
+
+tool_call: patch {"filename":"Default.sublime-keymap"}
+<<<<<<< ORIGINAL
+[
+  // Windows/Linux
+  { "keys": ["shift+enter"], "command": "tune_chat", "args": {"stop": "step"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["ctrl+enter"], "command": "tune_chat", "args": {"stop": "assistant"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["escape"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["ctrl+c"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]}
+]
+=======
+[
+  // Windows/Linux
+  { "keys": ["shift+enter"], "command": "tune_chat", "args": {"stop": "step"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["ctrl+enter"], "command": "tune_chat", "args": {"stop": "assistant"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["escape"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["ctrl+c"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  // Intercept Ctrl+S to suggest a name then open Save As in chat/prompt buffers
+  { "keys": ["ctrl+s"], "command": "tune_auto_save", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat | text.prompt"}
+  ]}
+]
+>>>>>>> UPDATED
+tool_result:
+patched
+assistant:
+
+tool_call: patch {"filename":"Default (OSX).sublime-keymap"}
+<<<<<<< ORIGINAL
+[
+  // macOS
+  { "keys": ["shift+enter"], "command": "tune_chat", "args": {"stop": "step"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["super+enter"], "command": "tune_chat", "args": {"stop": "assistant"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["escape"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["super+c"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]}
+]
+=======
+[
+  // macOS
+  { "keys": ["shift+enter"], "command": "tune_chat", "args": {"stop": "step"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["super+enter"], "command": "tune_chat", "args": {"stop": "assistant"}, "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["escape"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  { "keys": ["super+c"], "command": "tune_kill", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat"}
+  ]},
+  // Intercept Cmd+S to suggest a name then open Save As in chat/prompt buffers
+  { "keys": ["super+s"], "command": "tune_auto_save", "context": [
+    {"key": "selector", "operator": "equal", "operand": "text.chat | text.prompt"}
+  ]}
+]
+>>>>>>> UPDATED
+tool_result:
+patched
+assistant:
+
+tool_call: patch {"filename":"tune.py"}
+<<<<<<< ORIGINAL
+            # Set the name and open save dialog
+            self.view.set_name(filename)
+            sublime.set_timeout(lambda: self.view.window().run_command("save_as"), 0)
+
+        params = {"filename": "editor-filename.chat", "stop": "assistant", "response": "json"}
+        client.file2run(params, False, cb)
+=======
+            # Set the name and open save dialog with suggested path
+            self.view.set_name(filename)
+            win = self.view.window()
+            if win is None:
+                return
+
+            def open_dialog():
+                try:
+                    # Prefer prompt_save_as with a prefilled path if available
+                    win.run_command("prompt_save_as", {"file": suggested_path})
+                except Exception:
+                    # Fallback
+                    win.run_command("save_as")
+            sublime.set_timeout(open_dialog, 0)
+
+        params = {"filename": "editor-filename.chat", "stop": "assistant", "response": "json"}
+        client.file2run(params, False, cb)
+>>>>>>> UPDATED
+tool_result:
+patched

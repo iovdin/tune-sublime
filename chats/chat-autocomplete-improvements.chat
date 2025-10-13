@@ -1,0 +1,326 @@
+system: @@system
+user:
+autocomplete does not work
+when on line:
+asdf \@gpt|(cursor here)
+i hit ctrl + space
+the debug output is: 
+on_query_completions gpt [32]
+line_text asdf \@gpt
+line_text 9 23
+m None
+before_cursor 
+
+so before_cursor is empty 
+
+
+
+assistant:
+
+tool_call: rf {"filename":"tune.py","linenum":true}
+tool_result:
+<cut>
+assistant:
+
+tool_call: patch {"filename":"tune.py"}
+<<<<<<< ORIGINAL
+        before_cursor = line_text[: col - line_region.begin()]
+=======
+        # Use buffer point offset within the line, not the visual column value
+        before_cursor = line_text[: locations[0] - line_region.begin()]
+>>>>>>> UPDATED
+tool_result:
+patched
+user:
+good
+also i want u -> user: and s -> system: autocomplete to show without user hitting ctrl+space
+just if it is plain.text/chat file  file and u or s is at the begining of line the autocomplet is shown autocomatically 
+assistant:
+
+tool_call: rf {"filename":"syntaxes/Chat.sublime-syntax","linenum":true}
+tool_result:
+@{ syntaxes/Chat.sublime-syntax | linenum }
+assistant:
+
+tool_call: rf {"filename":"Chat.sublime-settings","linenum":true}
+tool_result:
+@{ Chat.sublime-settings | linenum }
+assistant:
+
+tool_call: patch {"filename":"tune.py"}
+<<<<<<< ORIGINAL
+class TuneCompletions(sublime_plugin.EventListener):
+    def on_query_completions(self, view: sublime.View, prefix: str, locations: List[int]):
+        # Only in Chat files
+        if view.match_selector(locations[0], "text.chat") is False:
+            return None
+
+        print("on_query_completions", prefix, locations)
+        row, col = view.rowcol(locations[0])
+        line_region = view.line(locations[0])
+        line_text = view.substr(line_region)
+        print("line_text", line_text)
+        print("line_text", col, line_region.begin())
+        # Use buffer point offset within the line, not the visual column value
+        before_cursor = line_text[: locations[0] - line_region.begin()]
+
+        # Snippet-like completions when entire line is just 'u'/'s'/'c'
+        if before_cursor in ("u", "s", "c") and (locations[0] - line_region.begin()) == 1:
+            items = [
+                ("user:\tSnippet", "user:\n"),
+                ("system:\tSnippet", "system:\n"),
+                ("c: -----------------------------------------\tSnippet", "c: -----------------------------------------\n"),
+            ]
+            return (items, sublime.INHIBIT_WORD_COMPLETIONS | sublime.INHIBIT_EXPLICIT_COMPLETIONS)
+
+        # @mention completion
+        import re
+        m = re.search(r"@[^@\s]*$", before_cursor)
+        print("m", m)
+        print("before_cursor", before_cursor)
+        if not m:
+            return None
+        query = before_cursor[m.start()+1:]
+
+        clist = sublime.CompletionList()
+
+        def fill():
+            client = _shared_client
+            if client is None:
+                # try start on-demand
+                plugin_loaded()
+            client = _shared_client
+            if client is None:
+                clist.set_completions([], 0)
+                return
+
+            def cb(e, result):
+                if e:
+                    clist.set_completions([], 0)
+                    return
+                items = []
+                if isinstance(result, list):
+                    for item in result:
+                        label = item.get("name") if isinstance(item, dict) else str(item)
+                        menu = "[{}]".format(item.get("source")) if isinstance(item, dict) and item.get("source") else ""
+                        items.append(sublime.CompletionItem.command_completion(
+                            trigger=label,
+                            annotation=menu,
+                            command="insert", args={"characters": label},
+                            kind=(sublime.KIND_ID_VARIABLE, "@", "tune"),
+                        ))
+                clist.set_completions(items, 0)
+
+            client.suggest({"query": query}, False, cb)
+
+        threading.Thread(target=fill, daemon=True).start()
+        return clist
+=======
+class TuneCompletions(sublime_plugin.EventListener):
+    def on_query_completions(self, view: sublime.View, prefix: str, locations: List[int]):
+        # Only in Chat files
+        if view.match_selector(locations[0], "text.chat") is False:
+            return None
+
+        print("on_query_completions", prefix, locations)
+        row, col = view.rowcol(locations[0])
+        line_region = view.line(locations[0])
+        line_text = view.substr(line_region)
+        print("line_text", line_text)
+        print("line_text", col, line_region.begin())
+        # Use buffer point offset within the line, not the visual column value
+        before_cursor = line_text[: locations[0] - line_region.begin()]
+
+        # Snippet-like completions when entire line is just 'u'/'s'/'c'
+        if before_cursor in ("u", "s", "c") and (locations[0] - line_region.begin()) == 1:
+            items = [
+                ("user:\tSnippet", "user:\n"),
+                ("system:\tSnippet", "system:\n"),
+                ("c: -----------------------------------------\tSnippet", "c: -----------------------------------------\n"),
+            ]
+            return (items, sublime.INHIBIT_WORD_COMPLETIONS | sublime.INHIBIT_EXPLICIT_COMPLETIONS)
+
+        # @mention completion
+        import re
+        m = re.search(r"@[^@\s]*$", before_cursor)
+        print("m", m)
+        print("before_cursor", before_cursor)
+        if not m:
+            return None
+        query = before_cursor[m.start()+1:]
+
+        clist = sublime.CompletionList()
+
+        def fill():
+            client = _shared_client
+            if client is None:
+                # try start on-demand
+                plugin_loaded()
+            client = _shared_client
+            if client is None:
+                clist.set_completions([], 0)
+                return
+
+            def cb(e, result):
+                if e:
+                    clist.set_completions([], 0)
+                    return
+                items = []
+                if isinstance(result, list):
+                    for item in result:
+                        label = item.get("name") if isinstance(item, dict) else str(item)
+                        menu = "[{}]".format(item.get("source")) if isinstance(item, dict) and item.get("source") else ""
+                        items.append(sublime.CompletionItem.command_completion(
+                            trigger=label,
+                            annotation=menu,
+                            command="insert", args={"characters": label},
+                            kind=(sublime.KIND_ID_VARIABLE, "@", "tune"),
+                        ))
+                clist.set_completions(items, 0)
+
+            client.suggest({"query": query}, False, cb)
+
+        threading.Thread(target=fill, daemon=True).start()
+        return clist
+
+    def on_modified_async(self, view: sublime.View):
+        try:
+            # Only trigger in Chat syntax
+            sel = view.sel()
+            if len(sel) != 1:
+                return
+            caret = sel[0].end()
+            if caret == 0:
+                return
+            # Require the file to be Chat
+            if not view.match_selector(caret, "text.chat"):
+                return
+            # If AC already showing, don't interfere
+            if view.is_auto_complete_visible():
+                return
+            # Check the just-typed character and that it's the first char on the line
+            ch = view.substr(sublime.Region(caret - 1, caret))
+            if ch not in ("u", "s"):
+                return
+            line_region = view.line(caret)
+            # Ensure cursor is at column 1 (i.e., we just typed the first character)
+            if caret - line_region.begin() != 1:
+                return
+            # Trigger autocomplete popup for our snippet completions
+            view.run_command("auto_complete", {
+                "disable_auto_insert": True,
+                "api_completions_only": True,
+                "next_completion_if_showing": False,
+            })
+        except Exception:
+            pass
+>>>>>>> UPDATED
+tool_result:
+patched
+user:
+nice job, 
+now i want to add to autocompletion type of node
+now there is "name       [source]" i want it to be "name     type [source]"
+assistant:
+
+tool_call: patch {"filename":"tune.py"}
+<<<<<<< ORIGINAL
+                        label = item.get("name") if isinstance(item, dict) else str(item)
+                        menu = "[{}]".format(item.get("source")) if isinstance(item, dict) and item.get("source") else ""
+                        items.append(sublime.CompletionItem.command_completion(
+                            trigger=label,
+                            annotation=menu,
+                            command="insert", args={"characters": label},
+                            kind=(sublime.KIND_ID_VARIABLE, "@", "tune"),
+                        ))
+=======
+                        label = item.get("name") if isinstance(item, dict) else str(item)
+                        typ = item.get("type") if isinstance(item, dict) else None
+                        src = item.get("source") if isinstance(item, dict) else None
+                        ann_parts = []
+                        if typ:
+                            ann_parts.append(str(typ))
+                        if src:
+                            ann_parts.append("[{}]".format(src))
+                        menu = " ".join(ann_parts)
+                        items.append(sublime.CompletionItem.command_completion(
+                            trigger=label,
+                            annotation=menu,
+                            command="insert", args={"characters": label},
+                            kind=(sublime.KIND_ID_VARIABLE, "@", "tune"),
+                        ))
+>>>>>>> UPDATED
+tool_result:
+patched
+user:
+great 
+can you know do a bit of filtering and compacting
+basically from the list of completion if there are few with the same name - take first
+assistant:
+
+tool_call: rf {"filename":"tune.py","linenum":false}
+tool_result:
+@tune.py
+assistant:
+
+tool_call: patch {"filename":"tune.py"}
+<<<<<<< ORIGINAL
+            def cb(e, result):
+                if e:
+                    clist.set_completions([], 0)
+                    return
+                items = []
+                if isinstance(result, list):
+                    for item in result:
+                        label = item.get("name") if isinstance(item, dict) else str(item)
+                        typ = item.get("type") if isinstance(item, dict) else None
+                        src = item.get("source") if isinstance(item, dict) else None
+                        ann_parts = []
+                        if typ:
+                            ann_parts.append(str(typ))
+                        if src:
+                            ann_parts.append("[{}]".format(src))
+                        menu = " ".join(ann_parts)
+                        items.append(sublime.CompletionItem.command_completion(
+                            trigger=label,
+                            annotation=menu,
+                            command="insert", args={"characters": label},
+                            kind=(sublime.KIND_ID_VARIABLE, "@", "tune"),
+                        ))
+                clist.set_completions(items, 0)
+=======
+            def cb(e, result):
+                if e:
+                    clist.set_completions([], 0)
+                    return
+                items = []
+                if isinstance(result, list):
+                    seen = set()
+                    deduped = []
+                    for raw in result:
+                        # Determine label (name) for de-duplication
+                        label = raw.get("name") if isinstance(raw, dict) else str(raw)
+                        if not label or label in seen:
+                            continue
+                        seen.add(label)
+                        deduped.append(raw)
+                    for item in deduped:
+                        label = item.get("name") if isinstance(item, dict) else str(item)
+                        typ = item.get("type") if isinstance(item, dict) else None
+                        src = item.get("source") if isinstance(item, dict) else None
+                        ann_parts = []
+                        if typ:
+                            ann_parts.append(str(typ))
+                        if src:
+                            ann_parts.append("[{}]".format(src))
+                        menu = " ".join(ann_parts)
+                        items.append(sublime.CompletionItem.command_completion(
+                            trigger=label,
+                            annotation=menu,
+                            command="insert", args={"characters": label},
+                            kind=(sublime.KIND_ID_VARIABLE, "@", "tune"),
+                        ))
+                clist.set_completions(items, 0)
+>>>>>>> UPDATED
+tool_result:
+patched
