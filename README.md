@@ -136,11 +136,11 @@ Example key bindings you can add to your User keymap:
 
 - Chat.sublime-syntax — main chat format (scope: text.chat)
 - Prompt.sublime-syntax — loose prompt format (scope: text.prompt)
-- Color scheme: color-schemes/Chat (Mariana).sublime-color-scheme
+- Color scheme: color-schemes/Chat.sublime-color-scheme
 
 To force the chat color scheme for Chat files, enable in Chat.sublime-settings:
 ```
-"color_scheme": "Packages/tune/color-schemes/Chat (Mariana).sublime-color-scheme"
+"color_scheme": "Packages/tune/color-schemes/Chat.sublime-color-scheme"
 ```
 
 ### Auto syntax assignment
