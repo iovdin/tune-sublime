@@ -1,0 +1,42 @@
+{
+  "name": "Chat",
+  "author": "tune-sublime",
+  "comment": "Color scheme for tune Chat/Prompt syntaxes",
+  "extends": "Packages/Color Scheme - Default/Default Dark.sublime-color-scheme",
+  "globals": {
+    "background": "#1E1E1E",
+    "foreground": "#D4D4D4",
+    "caret": "#AEAFAD",
+    "line_highlight": "#2A2A2A",
+    "selection": "#264F78",
+    "selection_border": "#264F78",
+    "inactive_selection": "#3A3D41",
+    "misspelling": "#F44747",
+    "accent": "#007ACC"
+  },
+  "rules": [
+    { "scope": "text.chat, text.prompt", "foreground": "#D4D4D4" },
+
+    // Role headers (labels)
+    { "scope": "keyword.declaration.chat", "foreground": "#000000", "background": "#00A0CD", "font_style": "bold" },
+    { "scope": "keyword.namespace.chat",  "foreground": "#000000", "background": "#92BF00", "font_style": "bold" },
+    { "scope": "keyword.constant.chat",   "foreground": "#000000", "background": "#969696", "font_style": "bold" },
+    { "scope": "keyword.reserved.chat",   "foreground": "#000000", "background": "#969696", "font_style": "bold" },
+    { "scope": "keyword.pseudo.chat",     "foreground": "#000000", "background": "#969696", "font_style": "bold" },
+    { "scope": "invalid.illegal.chat",    "foreground": "#000000", "background": "#DA4747", "font_style": "bold" },
+
+    // Block backgrounds (content)
+    { "scope": "meta.role.user.chat",      "background": "#082C38" },
+    { "scope": "meta.role.assistant.chat", "background": "#212E08" },
+    { "scope": "meta.role.system.chat",    "background": "#2A2A2A" },
+    { "scope": "meta.role.tool.chat",      "background": "#2A2A2A" },
+    { "scope": "meta.role.error.chat",     "background": "#3C1E1E" },
+    { "scope": "meta.role.comment.chat",   "background": "#2A2A2A" },
+
+    // Variables (@var, @{...})
+    { "scope": "variable.function", "font_style": "bold" },
+
+    // Comments body
+    { "scope": "comment.line.chat", "foreground": "#969696", "font_style": "italic" }
+  ]
+}
