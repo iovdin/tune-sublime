@@ -11,11 +11,18 @@
   ]
   */
 
-  // Path to the tune-sdk executable
-  // If not set, will search in PATH
+  // Preferred: path to a bin directory that contains both `node` and `tune-sdk`.
+  // Useful with nvm or custom Node installs so Sublime can find node when launching tune-sdk.
+  // Examples:
+  //   "tune-node-bin": "~/.nvm/versions/node/v22.20.0/bin"
+  //   "tune-node-bin": "/opt/node-v22/bin"
+  // "tune-node-bin": "~/.nvm/versions/node/v22.20.0/bin"
+
+  // Optional: path to the tune-sdk executable. If not set, will resolve from PATH
+  // (or from tune-node-bin if provided).
   // Examples:
   //   "tune-sdk-path": "tune-sdk"  (uses PATH)
   //   "tune-sdk-path": "/usr/local/bin/tune-sdk"  (absolute path)
-  //   "tune-sdk-path": "~/.nvm/versions/node/v22.20.0/bin/tune-sdk"  (home relative)
+  //   "tune-sdk-path": "~/.nvm/versions/node/v22.20.0/bin/tune-sdk"  (inside node bin)
   // "tune-sdk-path": "tune-sdk"
 }

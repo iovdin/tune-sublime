@@ -152,13 +152,21 @@ New plain-text buffers starting with user: or system: are automatically assigned
 Settings file: Preferences > Package Settings > tune > Chat Settings
 
 Available options
-- tune-sdk-path: path to the tune-sdk executable
-  - Example values:
+- tune-node-bin: path to a bin directory that contains both node and tune-sdk (recommended)
+  - Examples:
+    - "~/.nvm/versions/node/v22.20.0/bin"
+    - "/opt/node-v22/bin"
+- tune-sdk-path: explicit path to the tune-sdk executable (optional)
+  - Examples:
     - "tune-sdk" (use PATH)
     - "/usr/local/bin/tune-sdk"
     - "~/.nvm/versions/node/v22.20.0/bin/tune-sdk"
 - auto_complete_triggers: enable instant @ completion (see above)
 - color_scheme: use the bundled chat scheme
+
+Notes
+- If tune-node-bin is set, it will be prepended to PATH for the spawned process so node is available to the tune-sdk shim.
+- If tune-sdk-path is not set, the package will look for tune-sdk inside tune-node-bin, then fall back to PATH.
 
 Project context
 - The package starts tune-sdk in the first open project folder (if any) to resolve relative paths and tools.

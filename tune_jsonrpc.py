@@ -10,10 +10,11 @@ from typing import Any, Callable, Dict, Optional
 # Lightweight JSON-RPC 2.0 client over stdio with newline-delimited JSON
 
 class JsonRpcClient:
-    def __init__(self, cmd, exports: Optional[Dict[str, Callable]] = None, cwd: Optional[str] = None):
+    def __init__(self, cmd, exports: Optional[Dict[str, Callable]] = None, cwd: Optional[str] = None, env: Optional[Dict[str, str]] = None):
         self.cmd = cmd
         self.exports = exports or {}
         self.cwd = cwd
+        self.env = env
         self.process: Optional[subprocess.Popen] = None
         self._reader_thread: Optional[threading.Thread] = None
         self._stderr_thread: Optional[threading.Thread] = None
@@ -174,59 +175,66 @@ class JsonRpcClient:
             self._errbuf.append(line.rstrip())
 
 
-def _get_tune_sdk_path():
+def _get_tune_bin_and_env():
     """
-    Get the tune-sdk executable path.
-    Priority:
-    1. Setting from Chat.sublime-settings
-    2. Check if 'tune-sdk' exists in PATH
-    3. Return 'tune-sdk' as fallback
+    Resolve a command and environment to run tune-sdk reliably when using nvm or custom installs.
+    Settings supported (Preferences.sublime-settings or Chat.sublime-settings):
+    - tune-sdk-path: explicit path to tune-sdk executable or name in PATH
+    - tune-node-bin: path to a bin directory that contains both `node` and `tune-sdk`
+                    (e.g. ~/.nvm/versions/node/v22.3.0/bin)
+    Returns (cmd_list, env_overrides) where cmd_list is like ["/path/to/tune-sdk", "rpc"],
+    and env_overrides can include PATH so that node is found.
     """
-    # try:
     import sublime
+    sdk_path = None
+    node_bin = None
 
     # First check user preferences
     user_settings = sublime.load_settings("Preferences.sublime-settings")
     sdk_path = user_settings.get("tune-sdk-path")
+    node_bin = user_settings.get("tune-node-bin")
 
     # If not found, check package settings
-    if not sdk_path:
+    if not sdk_path or not node_bin:
         package_settings = sublime.load_settings("Chat.sublime-settings")
-        sdk_path = package_settings.get("tune-sdk-path")
-    print("sdk_path", sdk_path)
-    
-    if sdk_path:
-        # Expand ~ to home directory
-        sdk_path = os.path.expanduser(sdk_path)
-        # If it's a relative or absolute path that exists, use it
-        if os.path.isabs(sdk_path) and os.path.isfile(sdk_path):
-            return sdk_path
-        # If it's just a command name, check if it's in PATH
-        if shutil.which(sdk_path):
-            return sdk_path
-        # If the setting exists but is not found, still try to use it
-        # (it might be available at runtime)
-        return sdk_path
-    # except Exception:
-    #     
-    #     pass
-    
-    # Fallback: check if tune-sdk is in PATH
-    which_result = shutil.which("tune-sdk")
-    if which_result:
-        return which_result
-    
-    # Final fallback
-    return "tune-sdk"
+        if not sdk_path:
+            sdk_path = package_settings.get("tune-sdk-path")
+        if not node_bin:
+            node_bin = package_settings.get("tune-node-bin")
+
+    env = {}
+
+    # If node_bin is provided, prepend it to PATH so both node and tune-sdk inside it are found
+    if node_bin:
+        node_bin = os.path.expanduser(node_bin)
+        # Build PATH with node_bin first
+        current_path = os.environ.get("PATH", "")
+        env["PATH"] = node_bin + os.pathsep + current_path
+        # If sdk_path is not provided, try to resolve tune-sdk from this bin
+        if not sdk_path:
+            candidate = os.path.join(node_bin, "tune-sdk")
+            if os.path.isfile(candidate) or shutil.which(candidate):
+                sdk_path = candidate
+
+    # Resolve sdk_path if still not set
+    if not sdk_path:
+        which_result = shutil.which("tune-sdk", path=env.get("PATH")) if env.get("PATH") else shutil.which("tune-sdk")
+        if which_result:
+            sdk_path = which_result
+        else:
+            sdk_path = "tune-sdk"
+
+    # Expand ~ and return
+    sdk_path = os.path.expanduser(sdk_path)
+    return [sdk_path, "rpc"], env
 
 
 def spawn_tune(exports: Optional[Dict[str, Callable]] = None, cwd: Optional[str] = None):
     env_path = os.environ.get("TUNE_PATH", "")
-    tune_sdk = _get_tune_sdk_path()
-    cmd = [tune_sdk, "rpc"]
+    cmd, env_overrides = _get_tune_bin_and_env()
     if env_path:
         cmd += ["--path", env_path]
-    client = JsonRpcClient(cmd, exports=exports, cwd=cwd)
+    client = JsonRpcClient(cmd, exports=exports, cwd=cwd, env=env_overrides or None)
     err = client.start()
     if err:
         # Provide helpful error message
@@ -238,10 +246,11 @@ def spawn_tune(exports: Optional[Dict[str, Callable]] = None, cwd: Optional[str]
         error_msg += "   tune-sdk init\n\n"
         error_msg += "3. Configure API keys in ~/.tune/.env:\n"
         error_msg += "   OPENAI_KEY=your_key_here\n\n"
-        error_msg += "4. If tune-sdk is installed but not found:\n"
-        error_msg += "   - Find its location: which tune-sdk\n"
-        error_msg += "   - Add to Preferences.sublime-settings:\n"
-        error_msg += '     "tune-sdk-path": "/path/to/tune-sdk"\n'
+        error_msg += "4. If tune-sdk is installed but not found or node isn't in PATH (nvm):\n"
+        error_msg += "   - Find the bin dir: echo \"$NVM_BIN\" or which tune-sdk\n"
+        error_msg += "   - Add to settings (User or Chat.sublime-settings):\n"
+        error_msg += '     "tune-node-bin": "~/.nvm/versions/node/vXX.YY.Z/bin"\n'
+        error_msg += '     (optionally) "tune-sdk-path": ".../bin/tune-sdk"\n'
         return None, error_msg
     # advertise exports
     try:
