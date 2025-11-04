@@ -1,3 +1,85 @@
+system: @@system
+user:
+when i run 
+i get error in sublime text if i try to do autocomplete
+ err: 
+  env: node: No such file or directory
+
+but i have tune-node-bin set
+assistant:
+
+tool_call: rf {"filename":"chat_listener.py","linenum":true}
+tool_result:
+@{ chat_listener.py | linenum }
+assistant:
+
+tool_call: rf {"filename":"tune.py","linenum":true}
+tool_result:
+@{ tune.py | linenum }
+assistant:
+
+tool_call: rf {"filename":"tune_jsonrpc.py","linenum":true}
+tool_result:
+@{ tune_jsonrpc.py | linenum }
+assistant:
+
+tool_call: patch {"filename":"tune_jsonrpc.py"}
+<<<<<<< ORIGINAL
+     def start(self) -> Optional[str]:
+         try:
+             self.process = subprocess.Popen(
+                 self.cmd,
+                 stdin=subprocess.PIPE,
+                 stdout=subprocess.PIPE,
+                 stderr=subprocess.PIPE,
+                 bufsize=1,
+                 universal_newlines=True,
+                 cwd=self.cwd,
+             )
+         except Exception as e:
+             return str(e)
+ 
+         self._reader_thread = threading.Thread(target=self._read_stdout, name="tune-rpc-stdout", daemon=True)
+         self._reader_thread.start()
+         self._stderr_thread = threading.Thread(target=self._read_stderr, name="tune-rpc-stderr", daemon=True)
+         self._stderr_thread.start()
+         return None
+=======
+     def start(self) -> Optional[str]:
+         try:
+             # Merge provided env overrides with current environment so PATH etc. take effect
+             proc_env = os.environ.copy()
+             if self.env:
+                 proc_env.update(self.env)
+             self.process = subprocess.Popen(
+                 self.cmd,
+                 stdin=subprocess.PIPE,
+                 stdout=subprocess.PIPE,
+                 stderr=subprocess.PIPE,
+                 bufsize=1,
+                 universal_newlines=True,
+                 cwd=self.cwd,
+                 env=proc_env,
+             )
+         except Exception as e:
+             return str(e)
+ 
+         self._reader_thread = threading.Thread(target=self._read_stdout, name="tune-rpc-stdout", daemon=True)
+         self._reader_thread.start()
+         self._stderr_thread = threading.Thread(target=self._read_stderr, name="tune-rpc-stderr", daemon=True)
+         self._stderr_thread.start()
+         return None
+>>>>>>> UPDATED
+tool_result:
+patched (1/1), replacements: 1
+assistant:
+
+tool_call: rf {"filename":"tune_jsonrpc.py","linenum":true}
+tool_result:
+@{ tune_jsonrpc.py | linenum }
+assistant:
+
+tool_call: wf {"filename":"tune_jsonrpc.py"}
 import json
 import os
 import shutil
@@ -276,3 +358,6 @@ def spawn_tune(exports: Optional[Dict[str, Callable]] = None, cwd: Optional[str]
     except Exception:
         pass
     return client, None
+
+tool_result:
+written
