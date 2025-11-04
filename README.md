@@ -6,7 +6,7 @@ Project Tune: https://github.com/iovdin/tune
 
 ## Demo
 
-<video src="https://github.com/user-attachments/assets/a3af9530-2554-4eb3-9f86-a27f30af5675"></video>
+<video src="https://tuneai.s3.eu-central-003.backblazeb2.com/video/sublime.mp4"></video>
 
 ## Quick Start
 
