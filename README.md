@@ -6,8 +6,7 @@ Project Tune: https://github.com/iovdin/tune
 
 ## Demo
 
-<video src="https://github.com/user-attachments/assets/82eca86b-67d9-40aa-bc36-1452d2532501"></video>
-
+<video src="https://github.com/user-attachments/assets/3bb90a8e-5ccf-4398-8800-308304274040"></video>
 
 
 ## Quick Start
